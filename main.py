@@ -158,6 +158,8 @@ def build_roast_text(full_messages, user_mapping, command_text, owner_user_id, t
 def build_random_text(full_messages, user_mapping):
     analyzer = ChatAnalyzer(full_messages)
     msg = analyzer.get_random_message()
+    while "jarvis" or "Jarvis" in msg :
+        msg = analyzer.get_random_message()
     if not msg:
         return "⚠️ No messages logged yet."
     username = user_mapping.get(str(msg.user_id), "someone")
