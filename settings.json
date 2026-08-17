@@ -1,0 +1,60 @@
+{
+    "uuids": {
+        "phone_id": "9f8395a1-04cf-4a7c-9e8b-554d59cb30e5",
+        "uuid": "e2a431b7-415a-4dd0-9593-e67e85844fbd",
+        "client_session_id": "c436adfc-bc85-4197-827b-773bc63083c2",
+        "advertising_id": "41ced4e0-a93a-487c-a74d-c6b3ee690e82",
+        "android_device_id": "android-42629abe07c2684e",
+        "request_id": "f46f997a-5364-41cf-b032-b6ccd2c788b6",
+        "tray_session_id": "82454913-ea78-4bd2-b4c5-9cb0278ea822"
+    },
+    "mid": null,
+    "ig_u_rur": null,
+    "ig_www_claim": null,
+    "authorization_data": {
+        "ds_user_id": "37797976551",
+        "sessionid": "37797976551%3AetNX9OibczGzSs%3A14%3AAYhN_3R8f_6AYXssIkdfwbzx5Uda9DH2kwD7e9cOhQ",
+        "should_use_header_over_cookies": true
+    },
+    "cookies": {
+        "sessionid": "37797976551%3AetNX9OibczGzSs%3A14%3AAYhN_3R8f_6AYXssIkdfwbzx5Uda9DH2kwD7e9cOhQ",
+        "ds_user_id": "37797976551",
+        "rur": "HIL%2C17841437696544747%2C1788201593%3A01ff3f99c98ea92e624c8c28227bedf9c5677a7c4c34e46821eb4a23b405cb69c570eb4e"
+    },
+    "last_login": null,
+    "device_settings": {
+        "android_version": 34,
+        "android_release": "14",
+        "dpi": "480dpi",
+        "resolution": "1344x2992",
+        "manufacturer": "Google/google",
+        "device": "husky",
+        "model": "Pixel 8 Pro",
+        "cpu": "husky",
+        "app_version": "428.0.0.47.67",
+        "version_code": "961145276",
+        "bloks_versioning_id": "7189b949425f9bf80ea8bd880cf5a3080b292d9b1c4b38a18d112f7c4b71e7a8"
+    },
+    "user_agent": "Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)",
+    "country": "US",
+    "country_code": 1,
+    "locale": "en_US",
+    "timezone_offset": -14400,
+    "timezone_name": "GMT-04:00",
+    "push_disabled": true,
+    "request_timeout": 1,
+    "public_request_retries_count": 3,
+    "public_request_retries_timeout": 2,
+    "session_retry_total": 3,
+    "session_retry_backoff_factor": 2,
+    "session_retry_statuses": [
+        429,
+        500,
+        502,
+        503,
+        504
+    ],
+    "public_transport": "requests",
+    "public_transport_impersonate": "chrome136",
+    "tls_verify": true
+}

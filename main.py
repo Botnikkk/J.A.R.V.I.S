@@ -208,7 +208,6 @@ def main():
     global ACTIVE_TRIVIA
     load_dotenv()
 
-    SESSION_ID = os.getenv("IG_SESSION_ID")
     TARGET_GC_NAME = os.getenv("TARGET_GC_NAME")
     TIMEOUT_MINUTES = int(os.getenv("TIMEOUT_MINUTES", 20))
     POLL_FETCH_SIZE = int(os.getenv("POLL_FETCH_SIZE", 5))
@@ -220,7 +219,8 @@ def main():
     if not OWNER_USER_ID:
         print("⚠️  Warning: OWNER_USER_ID is not set — no one will be prioritized when multiple commands land at once.")
 
-    scraper = InstagramScraper(SESSION_ID)
+    scraper = InstagramScraper()
+    scraper.login()
     store = MessageStore()
 
     try:

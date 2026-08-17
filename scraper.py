@@ -2,17 +2,15 @@ import os
 from instagrapi import Client
 
 class InstagramScraper:
-    def __init__(self, session_id):
+    def __init__(self):
         self.cl = Client()
-        self.session_id = session_id
 
     def login(self):
-        print("Injecting session cookie...")
-        self.cl.login_by_sessionid(self.session_id)
-        print("Bypassed login screen successfully.")
+        print("Loading trusted session settings...")
+        self.cl.load_settings("settings.json")
+        print("Disguise loaded successfully. Ready to run!")
 
     def get_group_chat_data(self, gc_name, limit=500):
-        """Finds the GC, extracts usernames, and downloads message history."""
         threads = self.cl.direct_threads(amount=20)
         target_thread = None
 
@@ -35,8 +33,5 @@ class InstagramScraper:
         return messages, user_mapping, target_thread.id
 
     def send_message(self, thread_id, text, reply_to_message=None):
-        """Sends a text message to the group chat. If reply_to_message is
-        provided (a DirectMessage object), sends it as a threaded reply
-        to that message instead of a standalone message."""
         self.cl.direct_send(text, thread_ids=[thread_id], reply_to_message=reply_to_message)
         print("✅ Message sent successfully!\n")
