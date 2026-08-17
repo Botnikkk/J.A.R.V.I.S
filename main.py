@@ -14,6 +14,7 @@ from fun_commands import (
     format_roast,
     format_random,
 )
+InstagramScraper.send_message('J.A.R.V.I.S reporting! Up and running')
 
 ACTIVE_TRIVIA = None
 
@@ -335,8 +336,7 @@ def main():
                                 subprocess.run(["git", "pull"], check=True)
                                 
                                 # 2. Restart the Python script completely
-                                os.execv(sys.executable, ['python'] + sys.argv)
-                                
+                                os.execv(sys.executable, ['python'] + sys.argv)     
                             except Exception as e:
                                 scraper.send_message(thread_id, f"⚠️ Update failed: {e}")
                         elif command_type == "chance":
