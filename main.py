@@ -1,0 +1,343 @@
+import os
+import time
+import random
+from collections import defaultdict
+from dotenv import load_dotenv
+from scraper import InstagramScraper
+from analyzer import ChatAnalyzer
+from message_store import MessageStore
+from fun_commands import (
+    extract_user_ids_from_command,
+    format_vs,
+    format_roast,
+    format_random,
+)
+
+ACTIVE_TRIVIA = None
+
+def export_messages_to_files(messages, user_mapping, folder_name="messages"):
+    if not os.path.exists(folder_name):
+        os.makedirs(folder_name)
+
+    user_texts = defaultdict(list)
+    sorted_msgs = sorted(messages, key=lambda x: x.timestamp)
+
+    for msg in sorted_msgs:
+        if getattr(msg, 'text', None):
+            formatted_time = msg.timestamp.strftime("%I:%M %p %d/%m/%Y")
+            message_line = f"[{formatted_time}] {msg.text}"
+            user_texts[str(msg.user_id)].append(message_line)
+
+    for user_id, lines in user_texts.items():
+        username = user_mapping.get(str(user_id), f"Unknown_User_{user_id}")
+        safe_username = "".join(c for c in username if c.isalnum() or c in ('_', '-'))
+        file_path = os.path.join(folder_name, f"{safe_username}_{user_id}.txt")
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            for line in lines:
+                f.write(line + "\n")
+
+def find_new_messages(messages, last_processed_id):
+    if last_processed_id is None:
+        return []
+    new_batch = []
+    for msg in messages:
+        msg_id = getattr(msg, 'id', None)
+        if msg_id == last_processed_id:
+            break
+        new_batch.append(msg)
+    new_batch.reverse()
+    return new_batch
+
+def detect_command(text, sender_id, owner_user_id):
+    t = (text or "").lower()
+    tokens = [tok.strip(",.!?:;") for tok in t.split()]
+    if 'jarvis' not in tokens :
+        return None
+        
+    if str(sender_id) != str(owner_user_id):
+        chance = random.randint(0, 50)
+        if chance == 6:
+            return "chance"
+            
+    if "analytics" in tokens:
+        return "analytics"
+    if "vs" in tokens:
+        return "vs"
+    if "roast" in tokens:
+        return "roast"
+    if "random" in tokens:
+        return "random"
+    if "whosaidit" in tokens:
+        return "whosaidit"
+    if "answer" in tokens:
+        return "answer"
+        
+    return None
+    
+def pick_command_to_run(new_batch, owner_user_id):
+    candidates = []
+    for msg in new_batch:
+        text = getattr(msg, 'text', "") or ""
+        
+        cmd = detect_command(text, msg.user_id, owner_user_id)
+        
+        if cmd:
+            candidates.append((msg, cmd))
+
+    if not candidates:
+        return None, None
+
+
+    if owner_user_id:
+        for msg, cmd in candidates:
+            if str(msg.user_id) == str(owner_user_id):
+                return msg, cmd
+
+    return candidates[0]
+
+def build_analytics_text(full_messages, user_mapping, timeout_minutes):
+    analyzer = ChatAnalyzer(full_messages)
+    most_active = analyzer.get_most_active()
+    most_ignored = analyzer.get_most_ignored(timeout_minutes=timeout_minutes)
+
+    text = "📊 INSTAGRAM GC ANALYTICS 📊\n"
+    text += f"Analyzed {len(full_messages)} logged messages.\n\n"
+
+    text += "🏆 MOST ACTIVE:\n"
+    for user_id, count in most_active[:5]:
+        username = user_mapping.get(str(user_id), f"Unknown_{user_id}")
+        text += f" - {username}: {count} messages\n"
+
+    text += "\n👻 MOST IGNORED:\n"
+    for user_id, count in most_ignored[:5]:
+        username = user_mapping.get(str(user_id), f"Unknown_{user_id}")
+        text += f" - {username}: {count} times left on read\n"
+
+    return text
+
+def build_vs_text(full_messages, user_mapping, command_text):
+    ids = extract_user_ids_from_command(command_text, "vs", user_mapping, max_users=2)
+    if len(ids) < 2:
+        return "⚠️ Couldn't find two users to compare.  Grow a brain and actually tag a real person"
+
+    analyzer = ChatAnalyzer(full_messages)
+    stats1 = analyzer.get_user_stats(ids[0])
+    stats2 = analyzer.get_user_stats(ids[1])
+    name1 = user_mapping.get(ids[0], ids[0])
+    name2 = user_mapping.get(ids[1], ids[1])
+
+    if not stats1 or not stats2:
+        missing = name1 if not stats1 else name2
+        return f"⚠️ No logged messages for {missing} yet."
+
+    return format_vs(name1, stats1, name2, stats2)
+
+def build_roast_text(full_messages, user_mapping, command_text, owner_user_id, timezone_offset_hours=0):
+    ids = extract_user_ids_from_command(command_text, "roast", user_mapping, max_users=1)
+    
+    if not ids:
+        return "⚠️ Couldn't find who to roast. Grow a brain and actually tag a real person"
+        
+    if owner_user_id and str(ids[0]) == str(owner_user_id):
+        return "Sorry i can't roast the person who controls my existence."
+        
+    analyzer = ChatAnalyzer(full_messages)
+    stats = analyzer.get_user_stats(ids[0], timezone_offset_hours=timezone_offset_hours)
+    name = user_mapping.get(ids[0], ids[0])
+    
+    if not stats:
+        return f"⚠️ No logged messages for {name} yet."
+
+    return format_roast(name, stats)
+
+def build_random_text(full_messages, user_mapping):
+    analyzer = ChatAnalyzer(full_messages)
+    msg = analyzer.get_random_message()
+    if not msg:
+        return "⚠️ No messages logged yet."
+    username = user_mapping.get(str(msg.user_id), "someone")
+    return format_random(username, msg)
+
+def build_whosaidit_text(full_messages, user_mapping):
+    global ACTIVE_TRIVIA
+    analyzer = ChatAnalyzer(full_messages)
+    
+    quote_data = analyzer.get_whosaidit_quote(min_words=5)
+    
+    if not quote_data:
+        return "⚠️ Everyone here is too boring. I couldn't find a good quote."
+        
+    author_name = user_mapping.get(str(quote_data["author_id"]), "Unknown")
+    
+    ACTIVE_TRIVIA = {
+        "author_id": str(quote_data["author_id"]),
+        "author_name": author_name,
+        "hint": quote_data['date_hint']
+    }
+    
+    return f"🕵️‍♂️ **WHO SAID IT?** 🕵️‍♂️\n\n\"{quote_data['text']}\"\n\nTag the person you think said it (@username)! The first correct guess wins."
+
+def build_answer_text():
+    global ACTIVE_TRIVIA
+    if not ACTIVE_TRIVIA:
+        return "⚠️ There is no active trivia game right now! Type 'Jarvis whosaidit' to start one."
+        
+    ans_name = ACTIVE_TRIVIA['author_name']
+    ans_hint = ACTIVE_TRIVIA['hint']
+    ACTIVE_TRIVIA = None  # Reset the game
+    return f"🚨 THE ANSWER IS... 🚨\n\nIt was @{ans_name}"
+
+def is_correct_guess(text, target_username):
+    """
+    Checks if a message contains the correct username.
+    Strips punctuation out so things like "Is it @david!?" still trigger correctly.
+    """
+    if not text or not target_username:
+        return False
+    clean_text = ''.join(c if c.isalnum() or c in ['@', '_', '-'] else ' ' for c in text.lower())
+    tokens = clean_text.split()
+    target = target_username.lower()
+    
+    return f"@{target}" in tokens or target in tokens
+
+def main():
+    global ACTIVE_TRIVIA
+    load_dotenv()
+
+    SESSION_ID = os.getenv("IG_SESSION_ID")
+    TARGET_GC_NAME = os.getenv("TARGET_GC_NAME")
+    TIMEOUT_MINUTES = int(os.getenv("TIMEOUT_MINUTES", 20))
+    POLL_FETCH_SIZE = int(os.getenv("POLL_FETCH_SIZE", 5))
+    CATCHUP_LIMIT = int(os.getenv("CATCHUP_LIMIT", 5000))
+    OWNER_USER_ID = os.getenv("OWNER_USER_ID", "").strip() or None
+    COMMAND_COOLDOWN_SECONDS = float(os.getenv("COMMAND_COOLDOWN_SECONDS", 1.5))
+    TIMEZONE_OFFSET_HOURS = int(os.getenv("TIMEZONE_OFFSET_HOURS", 0))
+
+    if not OWNER_USER_ID:
+        print("⚠️  Warning: OWNER_USER_ID is not set — no one will be prioritized when multiple commands land at once.")
+
+    scraper = InstagramScraper(SESSION_ID)
+    store = MessageStore()
+
+    try:
+        scraper.login()
+    except Exception as e:
+        print(f"Login Error: {e}")
+        return
+
+    bot_user_id = str(scraper.cl.user_id)
+
+    print(f"Catching up on message history (already logged: {len(store.seen_ids)})...")
+    try:
+        catchup_messages, user_mapping, _ = scraper.get_group_chat_data(TARGET_GC_NAME, limit=CATCHUP_LIMIT)
+        added = store.append_new(catchup_messages, user_mapping, exclude_user_id=bot_user_id)
+        print(f"Catch-up complete: {added} new message(s) logged. Total: {len(store.seen_ids)}\n")
+    except Exception as e:
+        print(f"Catch-up fetch failed: {e} — continuing with normal polling, store will grow from here.\n")
+
+    print("="*50)
+    print("🤖 JARVIS — INSTAGRAM GC BOT ACTIVE 🤖")
+    print("="*50)
+    print(f"Target Group Chat: '{TARGET_GC_NAME}'")
+    print(f"Owner (priority) user ID: {OWNER_USER_ID or '(none set)'}")
+    print("Commands: Jarvis analytics | vs @a @b | roast @user | random | whosaidit | answer")
+    print(f"Command cooldown: {COMMAND_COOLDOWN_SECONDS}s | Timezone offset: UTC{'+' if TIMEZONE_OFFSET_HOURS >= 0 else ''}{TIMEZONE_OFFSET_HOURS}")
+    print("Polling every 3 seconds...")
+    print("Press Ctrl+C in this terminal window anytime to shut the bot down.\n")
+
+    last_processed_message_id = None
+    last_command_time = 0.0
+
+    while True:
+        try:
+            messages, user_mapping, thread_id = scraper.get_group_chat_data(
+                TARGET_GC_NAME, limit=POLL_FETCH_SIZE
+            )
+
+            new_count = store.append_new(messages, user_mapping, exclude_user_id=bot_user_id)
+            if new_count:
+                print(f"Stored {new_count} new message(s). Total logged: {len(store.seen_ids)}", end="\r", flush=True)
+
+            if messages:
+                new_batch = find_new_messages(messages, last_processed_message_id)
+
+                # ==========================================================
+                # 1. TRIVIA GAME CHECK (Runs before checking for commands)
+                # ==========================================================
+                if ACTIVE_TRIVIA:
+                    for msg in new_batch:
+                        if str(msg.user_id) == bot_user_id:
+                            continue  # Ignore the bot's own messages
+                            
+                        text = getattr(msg, 'text', '')
+                        if is_correct_guess(text, ACTIVE_TRIVIA['author_name']):
+                            ans_name = ACTIVE_TRIVIA['author_name']
+                            ans_hint = ACTIVE_TRIVIA['hint']
+                            winner_name = user_mapping.get(str(msg.user_id), "Someone")
+                            
+                            win_text = f"🎉 CORRECT! {winner_name} got it right.\n\nIt was indeed @{ans_name} (sent in {ans_hint})."
+                            
+                            # Reply directly to the winning guess!
+                            scraper.send_message(thread_id, win_text, reply_to_message=msg)
+                            
+                            # React to the winning message with a star
+                            try:
+                                scraper.cl.direct_send_reaction(thread_id, msg.id, "⭐")
+                            except Exception as e:
+                                print(f"Could not react to winning message: {e}")
+                                
+                            ACTIVE_TRIVIA = None
+                            break  # End the game for this round
+
+                # ==========================================================
+                # 2. STANDARD COMMAND PROCESSING
+                # ==========================================================
+                command_msg, command_type = pick_command_to_run(new_batch, OWNER_USER_ID)
+
+                latest_id = getattr(messages[0], 'id', None)
+                if latest_id:
+                    last_processed_message_id = latest_id
+
+                if command_msg:
+                    now = time.time()
+                    time_since_last = now - last_command_time
+
+                    if time_since_last < COMMAND_COOLDOWN_SECONDS:
+                        sender_name = user_mapping.get(str(command_msg.user_id), str(command_msg.user_id))
+                        print(f"\nCooldown active ({time_since_last:.1f}s/{COMMAND_COOLDOWN_SECONDS}s) — skipping '{command_type}' from {sender_name}")
+                    else:
+                        last_command_time = now
+                        print(f"\nCommand Triggered: '{command_type}' by {user_mapping.get(str(command_msg.user_id))}")
+
+                        full_messages = store.load_all(exclude_user_id=bot_user_id)
+
+                        if command_type == "analytics":
+                            export_messages_to_files(full_messages, user_mapping)
+                            reply_text = build_analytics_text(full_messages, user_mapping, TIMEOUT_MINUTES)
+                        elif command_type == "vs":
+                            reply_text = build_vs_text(full_messages, user_mapping, command_msg.text)
+                        elif command_type == "roast":
+                            reply_text = build_roast_text(full_messages, user_mapping, command_msg.text, OWNER_USER_ID, timezone_offset_hours=TIMEZONE_OFFSET_HOURS)
+                        elif command_type == "random":
+                            reply_text = build_random_text(full_messages, user_mapping)
+                        elif command_type == "whosaidit":
+                            reply_text = build_whosaidit_text(full_messages, user_mapping)
+                        elif command_type == "answer":
+                            reply_text = build_answer_text()
+                        elif command_type == "chance":
+                            reply_text = "Maa chuda mood nahi hai"
+                        else:
+                            reply_text = None
+
+                        if reply_text:
+                            scraper.send_message(thread_id, reply_text, reply_to_message=command_msg)
+                        print("💤 Resuming background watch loop...")
+
+        except Exception as e:
+            print(f"\nPolling Warning: {e} - retrying in 3 seconds...")
+
+        time.sleep(1.5)
+
+if __name__ == "__main__":
+    main()
