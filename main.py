@@ -1,3 +1,5 @@
+import sys
+import subprocess
 import os
 import time
 import random
@@ -59,7 +61,8 @@ def detect_command(text, sender_id, owner_user_id):
         chance = random.randint(0, 50)
         if chance == 6:
             return "chance"
-            
+    if "update" in tokens and str(sender_id) == str(owner_user_id):
+        return "update"
     if "analytics" in tokens:
         return "analytics"
     if "vs" in tokens:
@@ -325,6 +328,18 @@ def main():
                             reply_text = build_whosaidit_text(full_messages, user_mapping)
                         elif command_type == "answer":
                             reply_text = build_answer_text()
+                        elif command_type == "update":
+                            scraper.send_message(thread_id, "🔄 Pulling latest code from GitHub and restarting...")
+                            
+                            try:
+                                # 1. Pull the latest code from GitHub
+                                subprocess.run(["git", "pull"], check=True)
+                                
+                                # 2. Restart the Python script completely
+                                os.execv(sys.executable, ['python'] + sys.argv)
+                                
+                            except Exception as e:
+                                scraper.send_message(thread_id, f"⚠️ Update failed: {e}")
                         elif command_type == "chance":
                             reply_text = "Maa chuda mood nahi hai"
                         else:
