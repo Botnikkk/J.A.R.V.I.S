@@ -234,10 +234,7 @@ def main():
         catchup_messages, user_mapping, thread_id = scraper.get_group_chat_data(TARGET_GC_NAME, limit=CATCHUP_LIMIT)
         added = store.append_new(catchup_messages, user_mapping, exclude_user_id=bot_user_id)
         print(f"Catch-up complete: {added} new message(s) logged. Total: {len(store.seen_ids)}\n")
-        
-        # SEND STARTUP MESSAGE HERE 🚀
-        scraper.send_message(thread_id, "🤖 J.A.R.V.I.S online.")
-        
+                
     except Exception as e:
         print(f"Catch-up fetch failed: {e} — continuing with normal polling.\n")
 
@@ -246,6 +243,7 @@ def main():
     print("="*50)
     print(f"Target Group Chat: '{TARGET_GC_NAME}'")
     print("Polling every 1.5 seconds...")
+    scraper.send_message(thread_id, "🤖 J.A.R.V.I.S online.")
 
     last_processed_message_id = None
     last_command_time = 0.0
