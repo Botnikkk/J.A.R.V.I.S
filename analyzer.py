@@ -160,7 +160,10 @@ class ChatAnalyzer:
         user_messages = [m for m in candidates if m.user_id == chosen_user]
 
         # 4. Return a random message from that specific user
-        return random.choice(user_messages)
+        message = random.choice(user_messages)
+        while "jarvis" in message.lower() :
+            message = random.choice(user_messages)
+        return message
 
     def get_whosaidit_quote(self, min_words=5):
         """
