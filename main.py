@@ -236,7 +236,7 @@ def main():
         print(f"Catch-up complete: {added} new message(s) logged. Total: {len(store.seen_ids)}\n")
         
         # SEND STARTUP MESSAGE HERE 🚀
-        scraper.send_message(thread_id, "🤖 J.A.R.V.I.S online and operational.")
+        scraper.send_message(thread_id, "🤖 J.A.R.V.I.S online.")
         
     except Exception as e:
         print(f"Catch-up fetch failed: {e} — continuing with normal polling.\n")

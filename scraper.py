@@ -67,14 +67,7 @@ class InstagramScraper:
     def send_message(self, thread_id, text, reply_to_message=None):
         if reply_to_message is not None:
             try:
-                self.cl.direct_send(text, thread_ids=[thread_id], reply_to_message=reply_to_message)
-                print("✅ Message sent successfully (as reply)!\n")
+                self.cl.direct_send(text, thread_ids=[thread_id])
                 return
             except TypeError as e:
-                if "reply_to_message" in str(e):
-                    print("⚠️  This instagrapi version doesn't support reply_to_message — sending as a plain message instead.")
-                else:
-                    raise
-
-        self.cl.direct_send(text, thread_ids=[thread_id])
-        print("✅ Message sent successfully!\n")
+                raise
