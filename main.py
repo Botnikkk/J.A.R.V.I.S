@@ -220,7 +220,6 @@ def main():
         print("⚠️  Warning: OWNER_USER_ID is not set — no one will be prioritized when multiple commands land at once.")
 
     scraper = InstagramScraper()
-    scraper.login()
     store = MessageStore()
 
     try:
@@ -246,7 +245,7 @@ def main():
     print(f"Owner (priority) user ID: {OWNER_USER_ID or '(none set)'}")
     print("Commands: Jarvis analytics | vs @a @b | roast @user | random | whosaidit | answer")
     print(f"Command cooldown: {COMMAND_COOLDOWN_SECONDS}s | Timezone offset: UTC{'+' if TIMEZONE_OFFSET_HOURS >= 0 else ''}{TIMEZONE_OFFSET_HOURS}")
-    print("Polling every 3 seconds...")
+    print("Polling every 1.5 seconds...")
     print("Press Ctrl+C in this terminal window anytime to shut the bot down.\n")
 
     last_processed_message_id = None

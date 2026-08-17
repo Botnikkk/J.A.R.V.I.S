@@ -2,12 +2,44 @@ import os
 from instagrapi import Client
 
 class InstagramScraper:
-    def __init__(self):
+    def __init__(self, settings_path="settings.json"):
         self.cl = Client()
+        self.settings_path = settings_path
 
     def login(self):
+        """Applies a pre-authenticated session from settings.json directly —
+        deliberately never calls cl.login() with a password, since repeated
+        password auth attempts (even 'cheap' ones with valid cached cookies)
+        can trigger Instagram's challenge/email-code flow. If this session
+        has expired, you'll need to regenerate settings.json separately."""
         print("Loading trusted session settings...")
-        self.cl.load_settings("settings.json")
+
+        if not os.path.exists(self.settings_path):
+            
+            raise FileNotFoundError(
+                f"{self.settings_path} not found. This bot expects a pre-authenticated "
+                "session file — no username/password login is attempted."
+            )
+        
+        settings = self.cl.load_settings(self.settings_path)
+        self.cl.set_settings(settings)
+
+        # login() normally sets this — restore it manually from the cookie
+        # since we're intentionally skipping that call.
+        if not self.cl.user_id:
+            ds_user_id = self.cl.cookie_dict.get("ds_user_id")
+            if ds_user_id:
+                self.cl.user_id = int(ds_user_id)
+
+        # Lightweight check to confirm the session is actually still valid
+        settings = self.cl.load_settings(self.settings_path)
+        self.cl.set_settings(settings)
+
+        if not self.cl.user_id:
+            ds_user_id = self.cl.cookie_dict.get("ds_user_id")
+            if ds_user_id:
+                self.cl.user_id = int(ds_user_id)
+
         print("Disguise loaded successfully. Ready to run!")
 
     def get_group_chat_data(self, gc_name, limit=500):
@@ -33,5 +65,16 @@ class InstagramScraper:
         return messages, user_mapping, target_thread.id
 
     def send_message(self, thread_id, text, reply_to_message=None):
-        self.cl.direct_send(text, thread_ids=[thread_id], reply_to_message=reply_to_message)
+        if reply_to_message is not None:
+            try:
+                self.cl.direct_send(text, thread_ids=[thread_id], reply_to_message=reply_to_message)
+                print("✅ Message sent successfully (as reply)!\n")
+                return
+            except TypeError as e:
+                if "reply_to_message" in str(e):
+                    print("⚠️  This instagrapi version doesn't support reply_to_message — sending as a plain message instead.")
+                else:
+                    raise
+
+        self.cl.direct_send(text, thread_ids=[thread_id])
         print("✅ Message sent successfully!\n")

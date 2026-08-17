@@ -1,7 +1,15 @@
 import random
 import re
 from collections import Counter
-from datetime import timedelta
+from datetime import timedelta, timezone
+
+def _ensure_utc(dt):
+    """Forces a datetime to be timezone-aware (assumes UTC if naive).
+    Some logged messages may lack tzinfo depending on how/when they were
+    stored — this guarantees every comparison downstream is apples-to-apples."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 class ChatAnalyzer:
     def __init__(self, messages):
@@ -15,13 +23,13 @@ class ChatAnalyzer:
 
     def get_most_ignored(self, timeout_minutes=20):
         ignored_counts = Counter()
-        sorted_msgs = sorted(self.messages, key=lambda x: x.timestamp)
+        sorted_msgs = sorted(self.messages, key=lambda x: _ensure_utc(x.timestamp))
         max_gap = timedelta(0)
 
         for i in range(len(sorted_msgs) - 1):
             current_msg = sorted_msgs[i]
             next_msg = sorted_msgs[i+1]
-            time_gap = next_msg.timestamp - current_msg.timestamp
+            time_gap = _ensure_utc(next_msg.timestamp) - _ensure_utc(current_msg.timestamp)
 
             if time_gap > max_gap:
                 max_gap = time_gap
@@ -42,7 +50,7 @@ class ChatAnalyzer:
         if not user_msgs:
             return None
 
-        sorted_all = sorted(self.messages, key=lambda x: x.timestamp)
+        sorted_all = sorted(self.messages, key=lambda x: _ensure_utc(x.timestamp))
         total = len(user_msgs)
 
         # --- word / length stats ---
@@ -84,7 +92,7 @@ class ChatAnalyzer:
             prev_msg = sorted_all[i - 1]
             cur_msg = sorted_all[i]
             if str(cur_msg.user_id) == user_id and str(prev_msg.user_id) != user_id:
-                gap = (cur_msg.timestamp - prev_msg.timestamp).total_seconds()
+                gap = (_ensure_utc(cur_msg.timestamp) - _ensure_utc(prev_msg.timestamp)).total_seconds()
                 if gap >= 0:
                     response_gaps.append(gap)
         avg_response_seconds = sum(response_gaps) / len(response_gaps) if response_gaps else None
@@ -101,7 +109,7 @@ class ChatAnalyzer:
         # after a gap longer than timeout_minutes ---
         conversation_starts = 0
         for i in range(1, len(sorted_all)):
-            gap = sorted_all[i].timestamp - sorted_all[i - 1].timestamp
+            gap = _ensure_utc(sorted_all[i].timestamp) - _ensure_utc(sorted_all[i - 1].timestamp)
             if gap > timedelta(minutes=timeout_minutes) and str(sorted_all[i].user_id) == user_id:
                 conversation_starts += 1
 
@@ -138,24 +146,25 @@ class ChatAnalyzer:
         candidates = [m for m in self.messages if getattr(m, "text", None)]
         if not candidates:
             return None
-            
+
         # 1. Get all unique users who have sent at least one valid message
         unique_users = list(set(m.user_id for m in candidates))
-        
+
         if not unique_users:
             return None
-            
+
         # 2. Pick a random user so everyone has an equal chance
         chosen_user = random.choice(unique_users)
-        
+
         # 3. Filter the candidates to only messages from the chosen user
         user_messages = [m for m in candidates if m.user_id == chosen_user]
-        
+
         # 4. Return a random message from that specific user
         return random.choice(user_messages)
+
     def get_whosaidit_quote(self, min_words=5):
         """
-        Picks a random, out-of-context message that is long enough to be 
+        Picks a random, out-of-context message that is long enough to be
         guessable, excluding links and bot commands.
         """
         candidates = []
@@ -163,21 +172,21 @@ class ChatAnalyzer:
             text = getattr(m, "text", "")
             if not text:
                 continue
-            
+
             text = text.strip()
-            
+
             # Filter 1: Must be at least `min_words` long so it's an actual thought
             if len(text.split()) < min_words:
                 continue
-                
+
             # Filter 2: No links (nobody is guessing who sent a TikTok link)
             if "http://" in text or "https://" in text or "www." in text:
                 continue
-                
+
             # Filter 3: Ignore typical bot commands (modify these prefixes if needed)
             if text.startswith(("/", "!", "?", ".")):
                 continue
-                
+
             candidates.append(m)
 
         if not candidates:
@@ -185,9 +194,9 @@ class ChatAnalyzer:
 
         # Pick a random message
         chosen = random.choice(candidates)
-        
+
         return {
             "text": chosen.text,
             "author_id": chosen.user_id,
-            "date_hint": chosen.timestamp.strftime("%B %Y") # e.g., "November 2023" for a hint
+            "date_hint": chosen.timestamp.strftime("%B %Y")  # e.g., "November 2023" for a hint
         }
