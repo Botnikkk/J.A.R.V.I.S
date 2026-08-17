@@ -65,7 +65,6 @@ class InstagramScraper:
         return messages, user_mapping, target_thread.id
 
     def send_message(self, thread_id, text, reply_to_message=None):
-        if reply_to_message is not None:
             try:
                 self.cl.direct_send(text, thread_ids=[thread_id])
                 return
