@@ -14,7 +14,6 @@ from fun_commands import (
     format_roast,
     format_random,
 )
-InstagramScraper.send_message('J.A.R.V.I.S reporting! Up and running')
 
 ACTIVE_TRIVIA = None
 
@@ -83,15 +82,12 @@ def pick_command_to_run(new_batch, owner_user_id):
     candidates = []
     for msg in new_batch:
         text = getattr(msg, 'text', "") or ""
-        
         cmd = detect_command(text, msg.user_id, owner_user_id)
-        
         if cmd:
             candidates.append((msg, cmd))
 
     if not candidates:
         return None, None
-
 
     if owner_user_id:
         for msg, cmd in candidates:
@@ -123,7 +119,7 @@ def build_analytics_text(full_messages, user_mapping, timeout_minutes):
 def build_vs_text(full_messages, user_mapping, command_text):
     ids = extract_user_ids_from_command(command_text, "vs", user_mapping, max_users=2)
     if len(ids) < 2:
-        return "⚠️ Couldn't find two users to compare.  Grow a brain and actually tag a real person"
+        return "⚠️ Couldn't find two users to compare. Grow a brain and actually tag a real person"
 
     analyzer = ChatAnalyzer(full_messages)
     stats1 = analyzer.get_user_stats(ids[0])
@@ -158,8 +154,11 @@ def build_roast_text(full_messages, user_mapping, command_text, owner_user_id, t
 def build_random_text(full_messages, user_mapping):
     analyzer = ChatAnalyzer(full_messages)
     msg = analyzer.get_random_message()
-    while "jarvis" or "Jarvis" in msg :
+    
+    # Fixed infinite loop check
+    while msg and any(kw in (msg.text or "") for kw in ["jarvis", "Jarvis"]):
         msg = analyzer.get_random_message()
+        
     if not msg:
         return "⚠️ No messages logged yet."
     username = user_mapping.get(str(msg.user_id), "someone")
@@ -168,7 +167,6 @@ def build_random_text(full_messages, user_mapping):
 def build_whosaidit_text(full_messages, user_mapping):
     global ACTIVE_TRIVIA
     analyzer = ChatAnalyzer(full_messages)
-    
     quote_data = analyzer.get_whosaidit_quote(min_words=5)
     
     if not quote_data:
@@ -191,14 +189,10 @@ def build_answer_text():
         
     ans_name = ACTIVE_TRIVIA['author_name']
     ans_hint = ACTIVE_TRIVIA['hint']
-    ACTIVE_TRIVIA = None  # Reset the game
+    ACTIVE_TRIVIA = None
     return f"🚨 THE ANSWER IS... 🚨\n\nIt was @{ans_name}"
 
 def is_correct_guess(text, target_username):
-    """
-    Checks if a message contains the correct username.
-    Strips punctuation out so things like "Is it @david!?" still trigger correctly.
-    """
     if not text or not target_username:
         return False
     clean_text = ''.join(c if c.isalnum() or c in ['@', '_', '-'] else ' ' for c in text.lower())
@@ -220,36 +214,38 @@ def main():
     TIMEZONE_OFFSET_HOURS = int(os.getenv("TIMEZONE_OFFSET_HOURS", 0))
 
     if not OWNER_USER_ID:
-        print("⚠️  Warning: OWNER_USER_ID is not set — no one will be prioritized when multiple commands land at once.")
+        print("⚠️ Warning: OWNER_USER_ID is not set — no one will be prioritized.")
 
     scraper = InstagramScraper()
     store = MessageStore()
 
     try:
-        scraper.login()
+        print("Loading trusted session settings...")
+        scraper.cl.load_settings("settings.json")
+        print("Disguise loaded successfully.")
     except Exception as e:
-        print(f"Login Error: {e}")
+        print(f"Login/Settings Error: {e}")
         return
 
     bot_user_id = str(scraper.cl.user_id)
 
     print(f"Catching up on message history (already logged: {len(store.seen_ids)})...")
     try:
-        catchup_messages, user_mapping, _ = scraper.get_group_chat_data(TARGET_GC_NAME, limit=CATCHUP_LIMIT)
+        catchup_messages, user_mapping, thread_id = scraper.get_group_chat_data(TARGET_GC_NAME, limit=CATCHUP_LIMIT)
         added = store.append_new(catchup_messages, user_mapping, exclude_user_id=bot_user_id)
         print(f"Catch-up complete: {added} new message(s) logged. Total: {len(store.seen_ids)}\n")
+        
+        # SEND STARTUP MESSAGE HERE 🚀
+        scraper.send_message(thread_id, "🤖 J.A.R.V.I.S online and operational.")
+        
     except Exception as e:
-        print(f"Catch-up fetch failed: {e} — continuing with normal polling, store will grow from here.\n")
+        print(f"Catch-up fetch failed: {e} — continuing with normal polling.\n")
 
     print("="*50)
     print("🤖 JARVIS — INSTAGRAM GC BOT ACTIVE 🤖")
     print("="*50)
     print(f"Target Group Chat: '{TARGET_GC_NAME}'")
-    print(f"Owner (priority) user ID: {OWNER_USER_ID or '(none set)'}")
-    print("Commands: Jarvis analytics | vs @a @b | roast @user | random | whosaidit | answer")
-    print(f"Command cooldown: {COMMAND_COOLDOWN_SECONDS}s | Timezone offset: UTC{'+' if TIMEZONE_OFFSET_HOURS >= 0 else ''}{TIMEZONE_OFFSET_HOURS}")
     print("Polling every 1.5 seconds...")
-    print("Press Ctrl+C in this terminal window anytime to shut the bot down.\n")
 
     last_processed_message_id = None
     last_command_time = 0.0
@@ -267,14 +263,10 @@ def main():
             if messages:
                 new_batch = find_new_messages(messages, last_processed_message_id)
 
-                # ==========================================================
-                # 1. TRIVIA GAME CHECK (Runs before checking for commands)
-                # ==========================================================
                 if ACTIVE_TRIVIA:
                     for msg in new_batch:
                         if str(msg.user_id) == bot_user_id:
-                            continue  # Ignore the bot's own messages
-                            
+                            continue
                         text = getattr(msg, 'text', '')
                         if is_correct_guess(text, ACTIVE_TRIVIA['author_name']):
                             ans_name = ACTIVE_TRIVIA['author_name']
@@ -282,22 +274,16 @@ def main():
                             winner_name = user_mapping.get(str(msg.user_id), "Someone")
                             
                             win_text = f"🎉 CORRECT! {winner_name} got it right.\n\nIt was indeed @{ans_name} (sent in {ans_hint})."
-                            
-                            # Reply directly to the winning guess!
                             scraper.send_message(thread_id, win_text, reply_to_message=msg)
                             
-                            # React to the winning message with a star
                             try:
                                 scraper.cl.direct_send_reaction(thread_id, msg.id, "⭐")
                             except Exception as e:
-                                print(f"Could not react to winning message: {e}")
+                                print(f"Could not react: {e}")
                                 
                             ACTIVE_TRIVIA = None
-                            break  # End the game for this round
+                            break
 
-                # ==========================================================
-                # 2. STANDARD COMMAND PROCESSING
-                # ==========================================================
                 command_msg, command_type = pick_command_to_run(new_batch, OWNER_USER_ID)
 
                 latest_id = getattr(messages[0], 'id', None)
@@ -309,8 +295,7 @@ def main():
                     time_since_last = now - last_command_time
 
                     if time_since_last < COMMAND_COOLDOWN_SECONDS:
-                        sender_name = user_mapping.get(str(command_msg.user_id), str(command_msg.user_id))
-                        print(f"\nCooldown active ({time_since_last:.1f}s/{COMMAND_COOLDOWN_SECONDS}s) — skipping '{command_type}' from {sender_name}")
+                        pass
                     else:
                         last_command_time = now
                         print(f"\nCommand Triggered: '{command_type}' by {user_mapping.get(str(command_msg.user_id))}")
@@ -332,13 +317,9 @@ def main():
                             reply_text = build_answer_text()
                         elif command_type == "update":
                             scraper.send_message(thread_id, "🔄 Pulling latest code from GitHub and restarting...")
-                            
                             try:
-                                # 1. Pull the latest code from GitHub
                                 subprocess.run(["git", "pull"], check=True)
-                                
-                                # 2. Restart the Python script completely
-                                os.execv(sys.executable, ['python'] + sys.argv)     
+                                os.execv(sys.executable, ['python'] + sys.argv)    
                             except Exception as e:
                                 scraper.send_message(thread_id, f"⚠️ Update failed: {e}")
                         elif command_type == "chance":
