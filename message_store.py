@@ -21,7 +21,13 @@ class MessageStore:
 
     def append_new(self, messages, user_mapping, exclude_user_id=None):
         """Appends new, real text messages (skips reactions/media/action
-        logs and, optionally, a given user_id). Returns count added."""
+        logs and, optionally, a given user_id). Returns count added.
+
+        Timestamps are stripped of timezone info before storage (converted
+        to naive UTC) so every entry in the log stays in a consistent
+        format — instagrapi returns timezone-aware datetimes, but earlier
+        entries in this log were written naive, so we normalize going
+        forward rather than leave a mixed format."""
         exclude_user_id = str(exclude_user_id) if exclude_user_id is not None else None
         new_count = 0
         with open(self.path, "a", encoding="utf-8") as f:
@@ -42,12 +48,17 @@ class MessageStore:
                     continue
 
                 self.seen_ids.add(msg_id)
+
+                ts = msg.timestamp
+                if ts.tzinfo is not None:
+                    ts = ts.replace(tzinfo=None)
+
                 f.write(json.dumps({
                     "id": msg_id,
                     "user_id": user_id,
                     "username": user_mapping.get(user_id, "Unknown"),
                     "text": text,
-                    "timestamp": msg.timestamp.isoformat(),
+                    "timestamp": ts.isoformat(),
                 }) + "\n")
                 new_count += 1
         return new_count
