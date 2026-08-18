@@ -10,13 +10,14 @@ from core.scraper import InstagramScraper
 from core.analyzer import ChatAnalyzer
 from core.message_store import MessageStore
 from features.trivia import TriviaManager
+from features.passive_behaviors import PassiveBehaviors
 from features.fun_commands import (
     extract_user_ids_from_command,
     format_vs,
     format_roast,
     format_random,
 )
-
+    
 def export_messages_to_files(messages, user_mapping, folder_name="messages"):
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
@@ -182,6 +183,7 @@ def main():
     scraper = InstagramScraper()
     store = MessageStore()
     trivia = TriviaManager()
+    passive = PassiveBehaviors()
 
     try:
         print("Loading trusted session settings...")
@@ -223,7 +225,13 @@ def main():
 
             if messages:
                 new_batch = find_new_messages(messages, last_processed_message_id)
-
+                # Check for hypocrites
+                callouts = passive.check_hypocrite(new_batch, user_mapping)
+                for callout_text in callouts:
+                    # We don't reply to a specific message, we just drop it in the chat
+                    scraper.send_message(thread_id, callout_text)
+                    print(f"💀 Hypocrite detected: {callout_text}")
+                # -------------------------------
                 # TRIVIA CHECK
                 if trivia.active_trivia:
                     for msg in new_batch:

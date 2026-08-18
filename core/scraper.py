@@ -62,7 +62,14 @@ class InstagramScraper:
             user_mapping[str(self.cl.user_id)] = "Bot_Account"
 
         messages = self.cl.direct_messages(target_thread.id, amount=limit)
-        return messages, user_mapping, target_thread.id
+        IGNORED_IDS = {"37797976551", "64528677628"} 
+        
+        filtered_messages = []
+        for msg in messages:
+            if str(msg.user_id) not in IGNORED_IDS:
+                filtered_messages.append(msg)
+                
+        return filtered_messages, user_mapping, target_thread.id
 
     def send_message(self, thread_id, text, reply_to_message=None):
             try:
