@@ -6,6 +6,10 @@ import random
 from collections import defaultdict
 from dotenv import load_dotenv
 
+from datetime import datetime, timezone
+from features.smalltalk import get_smalltalk_reply
+from features.echo_chamber import get_or_build_echo_chamber
+from utils.logger import log_jarvis_interaction
 from core.scraper import InstagramScraper
 from core.analyzer import ChatAnalyzer
 from core.message_store import MessageStore
@@ -85,7 +89,7 @@ def detect_command(text, sender_id, owner_user_id):
     if "answer" in tokens:
         return "answer"
         
-    return None
+    return "echo"
     
 def pick_command_to_run(new_batch, owner_user_id):
     candidates = []
@@ -196,6 +200,7 @@ def main():
     OWNER_USER_ID = os.getenv("OWNER_USER_ID", "").strip() or None
     COMMAND_COOLDOWN_SECONDS = float(os.getenv("COMMAND_COOLDOWN_SECONDS", 1.5))
     TIMEZONE_OFFSET_HOURS = int(os.getenv("TIMEZONE_OFFSET_HOURS", 0))
+    ECHO_MAX_REPLY_GAP_SECONDS = float(os.getenv("ECHO_MAX_REPLY_GAP_SECONDS", 300))
 
     if not OWNER_USER_ID:
         print("⚠️ Warning: OWNER_USER_ID is not set — no one will be prioritized.")
@@ -331,8 +336,30 @@ def main():
                                 reply_text = None
                         elif command_type == "chance":
                             reply_text = "Maa chuda mood nahi hai"
-                        else:
-                            reply_text = None
+                        elif command_type == "echo":
+                            username = user_mapping.get(str(command_msg.user_id), "Unknown")
+                            prompt = command_msg.text
+                            
+                            smalltalk_reply = get_smalltalk_reply(command_msg.text)
+                            if smalltalk_reply:
+                                reply_text = smalltalk_reply
+                                print(f"Smalltalk: matched -> \"{reply_text}\"")
+                                log_jarvis_interaction(username, prompt, "SMALLTALK", reply_text)
+                            else:
+                                chamber = get_or_build_echo_chamber(full_messages)
+                                match = chamber.find_echo(
+                                    command_msg.text,
+                                    datetime.now(timezone.utc),
+                                    max_reply_gap_seconds=ECHO_MAX_REPLY_GAP_SECONDS,
+                                )
+                                if match:
+                                    reply_text = match["reply_text"]
+                                    print(f"Echo Chamber: MATCH FOUND (score={match['score']}) — source: \"{match['matched_source_text'][:60]}\" -> reply: \"{reply_text[:60]}\"")
+                                    log_jarvis_interaction(username, prompt, "ECHO", reply_text)
+                                else:
+                                    reply_text = None
+                                    print(f"Echo Chamber: NO MATCH FOUND for \"{command_msg.text[:60]}\" — ghosting.")
+                                    log_jarvis_interaction(username, prompt, "GHOSTED")
 
                         if reply_text:
                             scraper.send_message(thread_id, reply_text, reply_to_message=command_msg)
