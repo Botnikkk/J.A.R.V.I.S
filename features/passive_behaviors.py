@@ -4,6 +4,7 @@ import random
 class PassiveBehaviors:
     def __init__(self):
         self.sleep_tracker = {}
+        self.last_print_time = time.time() # <-- Internal stopwatch for printing
 
         self.sleep_keywords = [
             "gn", "goodnight", "good night", "goognait", "goog nait",
@@ -41,17 +42,24 @@ class PassiveBehaviors:
             if user_id in self.sleep_tracker:
                 time_asleep = now - self.sleep_tracker[user_id]
 
-                # If they text again between 5 minutes and 3 hours later
-                if 300 < time_asleep < 10800:
+                if time_asleep < 300:
+                    # UNDER 5 MINUTES: They are still yapping right after saying goodnight.
+                    pass 
+                
+                elif 300 <= time_asleep < 10800:
+                    # BETWEEN 5 MINS AND 3 HOURS: The trap springs. Roast them.
                     minutes = int(time_asleep // 60)
-
-                    # Pick a random roast template and fill in the blanks
                     template = random.choice(self.hypocrite_responses)
-                    callouts.append(template.format(
-                        username=username, minutes=minutes))
-
-                # They spoke, so we remove them from the tracker
-                del self.sleep_tracker[user_id]
+                    callouts.append(template.format(username=username, minutes=minutes))
+                    
+                    # Roast delivered, NOW we remove them from the tracker
+                    del self.sleep_tracker[user_id]
+                    print(f"🎯 [TRAP SPRUNG] Roasted {username} after {minutes} min. Removed from tracker.")
+                
+                else:
+                    # OVER 3 HOURS: They actually slept and woke up. Remove silently.
+                    del self.sleep_tracker[user_id]
+                    print(f"🌅 [TRAP EXPIRED] {username} woke up legitimately. Removed from tracker.")
 
             # 2. THE TRAP IS SET: Are they announcing their departure?
             if any(kw in text_lower for kw in self.sleep_keywords):
@@ -59,10 +67,19 @@ class PassiveBehaviors:
                 if len(text_lower.split()) <= 10:
                     self.sleep_tracker[user_id] = now
                     
-                    # --- NEW PRINT STATEMENT ---
-                    # Create a readable list of usernames currently being tracked
                     tracked_names = [user_mapping.get(uid, uid) for uid in self.sleep_tracker.keys()]
-                    print(f"🛌 [SLEEP TRAP SET] {username} went to sleep. Currently tracking: {tracked_names}")
-                    # ---------------------------
+                    print(f"🛌 [SLEEP TRAP SET/RESET] {username} went to sleep. Currently tracking: {tracked_names}")
 
         return callouts
+
+    def print_watchlist(self, user_mapping):
+        """Prints the currently tracked users exactly once every 60 seconds."""
+        now = time.time()
+        # If 60 seconds have passed since the last print
+        if now - self.last_print_time >= 60:
+            if self.sleep_tracker:  # Only print if there is actually someone in the list
+                tracked_names = [user_mapping.get(uid, uid) for uid in self.sleep_tracker.keys()]
+                print(f"🕒 [WATCHLIST] Currently monitoring: {tracked_names}")
+            
+            # Reset the stopwatch
+            self.last_print_time = now
