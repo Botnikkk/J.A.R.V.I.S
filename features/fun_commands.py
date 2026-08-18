@@ -276,3 +276,18 @@ def format_roast(name, stats):
 
     template = random.choice(ROAST_TEMPLATES[category])
     return template.format(name=name, count=stats["message_count"], **extra)
+def format_convo(convo_messages, user_mapping):
+    lines = ["🗣️ OUT OF CONTEXT CONVO 🗣️\n"]
+    for msg in convo_messages:
+        name = user_mapping.get(str(msg.user_id), "Someone")
+        lines.append(f"@{name} said:\n\"{msg.text}\"\n")
+    return "\n".join(lines).strip()
+
+def format_qna(qna_messages, user_mapping):
+    q_msg, a_msg = qna_messages
+    q_name = user_mapping.get(str(q_msg.user_id), "Someone")
+    a_name = user_mapping.get(str(a_msg.user_id), "Someone")
+    
+    return (f"❓ THE Q&A ❓\n\n"
+            f"@{q_name} asked:\n\"{q_msg.text}\"\n\n"
+            f"@{a_name} answered:\n\"{a_msg.text}\"")

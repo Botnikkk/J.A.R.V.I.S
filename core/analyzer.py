@@ -139,3 +139,53 @@ class ChatAnalyzer:
             "author_id": chosen.user_id,
             "date_hint": chosen.timestamp.strftime("%B %Y")
         }
+    def get_contextless_messages(self, msg_type="convo"):
+        """Fetches smart, random messages for the convo and qna commands."""
+        # 1. Filter out garbage messages (links, 1-word texts, commands)
+        valid_msgs = []
+        for m in self.messages:
+            text = getattr(m, "text", "")
+            if not text:
+                continue
+            text_lower = text.lower()
+            if "jarvis" in text_lower:
+                continue
+            if "http" in text_lower or "www." in text_lower:
+                continue
+            if len(text.split()) < 2:  # Skip 1-word replies (like "ok", "lol")
+                continue
+            valid_msgs.append(m)
+
+        if not valid_msgs:
+            return None
+
+        if msg_type == "convo":
+            # Group by unique users
+            users = list(set(m.user_id for m in valid_msgs))
+            if len(users) < 2:
+                return None
+            
+            # Pick 2 or 3 random people
+            num_participants = random.choice([2, 3]) if len(users) >= 3 else 2
+            chosen_users = random.sample(users, num_participants)
+            
+            convo = []
+            for uid in chosen_users:
+                user_msgs = [m for m in valid_msgs if m.user_id == uid]
+                convo.append(random.choice(user_msgs))
+            return convo
+
+        elif msg_type == "qna":
+            # Find all questions
+            questions = [m for m in valid_msgs if "?" in m.text]
+            if not questions:
+                return None
+            chosen_q = random.choice(questions)
+            
+            # Find all non-questions from a DIFFERENT user
+            answers = [m for m in valid_msgs if m.user_id != chosen_q.user_id and "?" not in m.text]
+            if not answers:
+                return None
+            chosen_a = random.choice(answers)
+            
+            return [chosen_q, chosen_a]

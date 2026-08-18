@@ -16,6 +16,8 @@ from features.fun_commands import (
     format_vs,
     format_roast,
     format_random,
+    format_convo,
+    format_qna,
 )
     
 def export_messages_to_files(messages, user_mapping, folder_name="messages"):
@@ -74,6 +76,10 @@ def detect_command(text, sender_id, owner_user_id):
         return "roast"
     if "random" in tokens:
         return "random"
+    if "convo" in tokens:
+        return "convo"
+    if "qna" in tokens:
+        return "qna"
     if "whosaidit" in tokens:
         return "whosaidit"
     if "answer" in tokens:
@@ -165,6 +171,20 @@ def build_random_text(full_messages, user_mapping):
         return "⚠️ No messages logged yet."
     username = user_mapping.get(str(msg.user_id), "someone")
     return format_random(username, msg)
+
+def build_convo_text(full_messages, user_mapping):
+    analyzer = ChatAnalyzer(full_messages)
+    convo_msgs = analyzer.get_contextless_messages(msg_type="convo")
+    if not convo_msgs:
+        return "⚠️ Not enough valid messages to generate a conversation."
+    return format_convo(convo_msgs, user_mapping)
+
+def build_qna_text(full_messages, user_mapping):
+    analyzer = ChatAnalyzer(full_messages)
+    qna_msgs = analyzer.get_contextless_messages(msg_type="qna")
+    if not qna_msgs:
+        return "⚠️ Not enough valid questions/answers to generate a Q&A."
+    return format_qna(qna_msgs, user_mapping)
 
 def main():
     load_dotenv()
@@ -287,6 +307,10 @@ def main():
                             reply_text = build_roast_text(full_messages, user_mapping, command_msg.text, OWNER_USER_ID, timezone_offset_hours=TIMEZONE_OFFSET_HOURS)
                         elif command_type == "random":
                             reply_text = build_random_text(full_messages, user_mapping)
+                        elif command_type == "convo":
+                            reply_text = build_convo_text(full_messages, user_mapping)
+                        elif command_type == "qna":
+                            reply_text = build_qna_text(full_messages, user_mapping)
                         elif command_type == "whosaidit":
                             analyzer = ChatAnalyzer(full_messages)
                             quote_data = analyzer.get_whosaidit_quote(min_words=5)
@@ -316,7 +340,7 @@ def main():
 
         except Exception as e:
             print(f"\nPolling Warning: {e} - retrying in 3 seconds...")
-
+        
         time.sleep(1.5)
 
 if __name__ == "__main__":
