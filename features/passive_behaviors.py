@@ -1,7 +1,6 @@
 import time
 import random
 
-
 class PassiveBehaviors:
     def __init__(self):
         self.sleep_tracker = {}
@@ -56,8 +55,14 @@ class PassiveBehaviors:
 
             # 2. THE TRAP IS SET: Are they announcing their departure?
             if any(kw in text_lower for kw in self.sleep_keywords):
-                # We only trap them if the message is short (under 6 words)
+                # We only trap them if the message is short (under 10 words)
                 if len(text_lower.split()) <= 10:
                     self.sleep_tracker[user_id] = now
+                    
+                    # --- NEW PRINT STATEMENT ---
+                    # Create a readable list of usernames currently being tracked
+                    tracked_names = [user_mapping.get(uid, uid) for uid in self.sleep_tracker.keys()]
+                    print(f"🛌 [SLEEP TRAP SET] {username} went to sleep. Currently tracking: {tracked_names}")
+                    # ---------------------------
 
         return callouts
