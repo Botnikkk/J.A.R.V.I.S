@@ -183,8 +183,6 @@ def main():
     scraper = InstagramScraper()
     store = MessageStore()
     trivia = TriviaManager()
-    passive = PassiveBehaviors()
-
     try:
         print("Loading trusted session settings...")
         scraper.cl.load_settings("settings.json")
