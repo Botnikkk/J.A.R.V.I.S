@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 class MessageStore:
@@ -20,14 +20,7 @@ class MessageStore:
                     self.seen_ids.add(msg["id"])
 
     def append_new(self, messages, user_mapping, exclude_user_id=None):
-        """Appends new, real text messages (skips reactions/media/action
-        logs and, optionally, a given user_id). Returns count added.
-
-        Timestamps are stripped of timezone info before storage (converted
-        to naive UTC) so every entry in the log stays in a consistent
-        format — instagrapi returns timezone-aware datetimes, but earlier
-        entries in this log were written naive, so we normalize going
-        forward rather than leave a mixed format."""
+        """Appends new, real text messages. Normalizes all timestamps to UTC."""
         exclude_user_id = str(exclude_user_id) if exclude_user_id is not None else None
         new_count = 0
         with open(self.path, "a", encoding="utf-8") as f:
@@ -50,8 +43,11 @@ class MessageStore:
                 self.seen_ids.add(msg_id)
 
                 ts = msg.timestamp
-                if ts.tzinfo is not None:
-                    ts = ts.replace(tzinfo=None)
+                # Ensure ts is a timezone-aware UTC datetime
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                else:
+                    ts = ts.astimezone(timezone.utc)
 
                 f.write(json.dumps({
                     "id": msg_id,
@@ -65,9 +61,13 @@ class MessageStore:
 
     def load_all(self, exclude_user_id=None):
         """Returns stored messages as objects with the same interface as
-        instagrapi's DirectMessage (.id, .user_id, .text, .timestamp)."""
+        instagrapi's DirectMessage. Normalizes both old (naive) and new (aware)
+        timestamps to consistent UTC-aware datetime objects."""
         exclude_user_id = str(exclude_user_id) if exclude_user_id is not None else None
         out = []
+        if not os.path.exists(self.path):
+            return out
+
         with open(self.path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -76,10 +76,19 @@ class MessageStore:
                 raw = json.loads(line)
                 if exclude_user_id and raw["user_id"] == exclude_user_id:
                     continue
+
+                dt = datetime.fromisoformat(raw["timestamp"])
+                
+                # Normalize naive old entries vs aware new entries
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                else:
+                    dt = dt.astimezone(timezone.utc)
+
                 out.append(SimpleNamespace(
                     id=raw["id"],
                     user_id=raw["user_id"],
                     text=raw["text"],
-                    timestamp=datetime.fromisoformat(raw["timestamp"]),
+                    timestamp=dt,
                 ))
         return out
