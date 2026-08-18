@@ -6,11 +6,11 @@ import random
 from collections import defaultdict
 from dotenv import load_dotenv
 
-from scraper import InstagramScraper
-from analyzer import ChatAnalyzer
-from message_store import MessageStore
-from trivia import TriviaManager
-from fun_commands import (
+from core.scraper import InstagramScraper
+from core.analyzer import ChatAnalyzer
+from core.message_store import MessageStore
+from features.trivia import TriviaManager
+from features.fun_commands import (
     extract_user_ids_from_command,
     format_vs,
     format_roast,
