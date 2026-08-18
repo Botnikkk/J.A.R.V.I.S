@@ -25,7 +25,7 @@ class PassiveBehaviors:
             "@{username} acha lode aise so rha h",
             "@{username} go back to sleep nga",
             "koi to lundka (@{username}) sone ja rha tha",
-            "{minutes}mins pehle sone rha tha @{username}",
+            "{minutes}mins pehle sone ja rha tha @{username}",
             "@{username} lasted {minutes} without phone",
             "bhagwan ke liye soja @{username}"
         ]
