@@ -194,6 +194,11 @@ def main():
         return
 
     bot_user_id = str(scraper.cl.user_id)
+    # 1. Put Meta AI and the old bot's IDs here:
+    IGNORED_IDS = {"37797976551", "64528677628"}
+    
+    # 2. Initialize passive behaviors with the IDs to ignore:
+    passive = PassiveBehaviors(bot_user_id=bot_user_id, ignored_ids=IGNORED_IDS)
 
     print(f"Catching up on message history (already logged: {len(store.seen_ids)})...")
     try:
