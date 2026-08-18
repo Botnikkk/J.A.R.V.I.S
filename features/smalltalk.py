@@ -62,7 +62,6 @@ def get_smalltalk_reply(text):
     known smalltalk pattern, else None. Exact match, not substring, so
     'hy' won't false-positive inside an unrelated longer message."""
     normalized = _normalize(text)
-    print(f"small talk recived {text}")
     for entry in SMALLTALK:
         if normalized in entry["patterns"]:
             return random.choice(entry["responses"])

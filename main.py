@@ -339,27 +339,27 @@ def main():
                         elif command_type == "echo":
                             username = user_mapping.get(str(command_msg.user_id), "Unknown")
                             prompt = command_msg.text
-                            
-                            smalltalk_reply = get_smalltalk_reply(command_msg.text)
+                            clean_prompt = " ".join([tok for tok in prompt.split() if tok.lower().strip(",.!?:;") != "jarvis"])
+                            smalltalk_reply = get_smalltalk_reply(clean_prompt)
                             if smalltalk_reply:
                                 reply_text = smalltalk_reply
                                 print(f"Smalltalk: matched -> \"{reply_text}\"")
-                                log_jarvis_interaction(username, prompt, "SMALLTALK", reply_text)
+                                log_jarvis_interaction(username, clean_prompt, "SMALLTALK", reply_text)
                             else:
                                 chamber = get_or_build_echo_chamber(full_messages)
                                 match = chamber.find_echo(
-                                    command_msg.text,
+                                    clean_prompt,
                                     datetime.now(timezone.utc),
                                     max_reply_gap_seconds=ECHO_MAX_REPLY_GAP_SECONDS,
                                 )
                                 if match:
                                     reply_text = match["reply_text"]
                                     print(f"Echo Chamber: MATCH FOUND (score={match['score']}) — source: \"{match['matched_source_text'][:60]}\" -> reply: \"{reply_text[:60]}\"")
-                                    log_jarvis_interaction(username, prompt, "ECHO", reply_text)
+                                    log_jarvis_interaction(username, clean_prompt, "ECHO", reply_text)
                                 else:
                                     reply_text = None
-                                    print(f"Echo Chamber: NO MATCH FOUND for \"{command_msg.text[:60]}\" — ghosting.")
-                                    log_jarvis_interaction(username, prompt, "GHOSTED")
+                                    print(f"Echo Chamber: NO MATCH FOUND for \"{clean_prompt[:60]}\" — ghosting.")
+                                    log_jarvis_interaction(username, clean_prompt, "GHOSTED")
 
                         if reply_text:
                             scraper.send_message(thread_id, reply_text, reply_to_message=command_msg)
