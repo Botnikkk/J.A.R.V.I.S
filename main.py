@@ -5,17 +5,17 @@ import time
 import random
 from collections import defaultdict
 from dotenv import load_dotenv
+
 from scraper import InstagramScraper
 from analyzer import ChatAnalyzer
 from message_store import MessageStore
+from trivia import TriviaManager
 from fun_commands import (
     extract_user_ids_from_command,
     format_vs,
     format_roast,
     format_random,
 )
-
-ACTIVE_TRIVIA = None
 
 def export_messages_to_files(messages, user_mapping, folder_name="messages"):
     if not os.path.exists(folder_name):
@@ -54,13 +54,15 @@ def find_new_messages(messages, last_processed_id):
 def detect_command(text, sender_id, owner_user_id):
     t = (text or "").lower()
     tokens = [tok.strip(",.!?:;") for tok in t.split()]
-    if 'jarvis' not in tokens :
+    
+    if 'jarvis' not in tokens:
         return None
         
     if str(sender_id) != str(owner_user_id):
         chance = random.randint(0, 50)
         if chance == 6:
             return "chance"
+            
     if "update" in tokens and str(sender_id) == str(owner_user_id):
         return "update"
     if "analytics" in tokens:
@@ -155,7 +157,6 @@ def build_random_text(full_messages, user_mapping):
     analyzer = ChatAnalyzer(full_messages)
     msg = analyzer.get_random_message()
     
-    # Fixed infinite loop check
     while msg and any(kw in (msg.text or "") for kw in ["jarvis", "Jarvis"]):
         msg = analyzer.get_random_message()
         
@@ -164,45 +165,7 @@ def build_random_text(full_messages, user_mapping):
     username = user_mapping.get(str(msg.user_id), "someone")
     return format_random(username, msg)
 
-def build_whosaidit_text(full_messages, user_mapping):
-    global ACTIVE_TRIVIA
-    analyzer = ChatAnalyzer(full_messages)
-    quote_data = analyzer.get_whosaidit_quote(min_words=5)
-    
-    if not quote_data:
-        return "⚠️ Everyone here is too boring. I couldn't find a good quote."
-        
-    author_name = user_mapping.get(str(quote_data["author_id"]), "Unknown")
-    
-    ACTIVE_TRIVIA = {
-        "author_id": str(quote_data["author_id"]),
-        "author_name": author_name,
-        "hint": quote_data['date_hint']
-    }
-    
-    return f"🕵️‍♂️ **WHO SAID IT?** 🕵️‍♂️\n\n\"{quote_data['text']}\"\n\nTag the person you think said it (@username)! The first correct guess wins."
-
-def build_answer_text():
-    global ACTIVE_TRIVIA
-    if not ACTIVE_TRIVIA:
-        return "⚠️ There is no active trivia game right now! Type 'Jarvis whosaidit' to start one."
-        
-    ans_name = ACTIVE_TRIVIA['author_name']
-    ans_hint = ACTIVE_TRIVIA['hint']
-    ACTIVE_TRIVIA = None
-    return f"🚨 THE ANSWER IS... 🚨\n\nIt was @{ans_name}"
-
-def is_correct_guess(text, target_username):
-    if not text or not target_username:
-        return False
-    clean_text = ''.join(c if c.isalnum() or c in ['@', '_', '-'] else ' ' for c in text.lower())
-    tokens = clean_text.split()
-    target = target_username.lower()
-    
-    return f"@{target}" in tokens or target in tokens
-
 def main():
-    global ACTIVE_TRIVIA
     load_dotenv()
 
     TARGET_GC_NAME = os.getenv("TARGET_GC_NAME")
@@ -218,6 +181,7 @@ def main():
 
     scraper = InstagramScraper()
     store = MessageStore()
+    trivia = TriviaManager()
 
     try:
         print("Loading trusted session settings...")
@@ -234,7 +198,6 @@ def main():
         catchup_messages, user_mapping, thread_id = scraper.get_group_chat_data(TARGET_GC_NAME, limit=CATCHUP_LIMIT)
         added = store.append_new(catchup_messages, user_mapping, exclude_user_id=bot_user_id)
         print(f"Catch-up complete: {added} new message(s) logged. Total: {len(store.seen_ids)}\n")
-                
     except Exception as e:
         print(f"Catch-up fetch failed: {e} — continuing with normal polling.\n")
 
@@ -261,14 +224,16 @@ def main():
             if messages:
                 new_batch = find_new_messages(messages, last_processed_message_id)
 
-                if ACTIVE_TRIVIA:
+                # TRIVIA CHECK
+                if trivia.active_trivia:
                     for msg in new_batch:
                         if str(msg.user_id) == bot_user_id:
                             continue
                         text = getattr(msg, 'text', '')
-                        if is_correct_guess(text, ACTIVE_TRIVIA['author_name']):
-                            ans_name = ACTIVE_TRIVIA['author_name']
-                            ans_hint = ACTIVE_TRIVIA['hint']
+                        
+                        if trivia.check_guess(text):
+                            ans_name = trivia.active_trivia['author_name']
+                            ans_hint = trivia.active_trivia['hint']
                             winner_name = user_mapping.get(str(msg.user_id), "Someone")
                             
                             win_text = f"🎉 CORRECT! {winner_name} got it right.\n\nIt was indeed @{ans_name} (sent in {ans_hint})."
@@ -279,15 +244,17 @@ def main():
                             except Exception as e:
                                 print(f"Could not react: {e}")
                                 
-                            ACTIVE_TRIVIA = None
+                            trivia.active_trivia = None
                             break
 
+                # COMMAND DETECTION
                 command_msg, command_type = pick_command_to_run(new_batch, OWNER_USER_ID)
 
                 latest_id = getattr(messages[0], 'id', None)
                 if latest_id:
                     last_processed_message_id = latest_id
 
+                # COMMAND EXECUTION
                 if command_msg:
                     now = time.time()
                     time_since_last = now - last_command_time
@@ -310,9 +277,15 @@ def main():
                         elif command_type == "random":
                             reply_text = build_random_text(full_messages, user_mapping)
                         elif command_type == "whosaidit":
-                            reply_text = build_whosaidit_text(full_messages, user_mapping)
+                            analyzer = ChatAnalyzer(full_messages)
+                            quote_data = analyzer.get_whosaidit_quote(min_words=5)
+                            
+                            if quote_data:
+                                reply_text = trivia.start_game(quote_data, user_mapping)
+                            else:
+                                reply_text = "⚠️ Everyone here is too boring. I couldn't find a good quote."
                         elif command_type == "answer":
-                            reply_text = build_answer_text()
+                            reply_text = trivia.get_answer()
                         elif command_type == "update":
                             scraper.send_message(thread_id, "🔄 Pulling latest code from GitHub and restarting...")
                             try:
@@ -320,6 +293,7 @@ def main():
                                 os.execv(sys.executable, ['python'] + sys.argv)    
                             except Exception as e:
                                 scraper.send_message(thread_id, f"⚠️ Update failed: {e}")
+                                reply_text = None
                         elif command_type == "chance":
                             reply_text = "Maa chuda mood nahi hai"
                         else:
