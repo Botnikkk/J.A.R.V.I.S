@@ -276,7 +276,7 @@ def main():
                             ans_hint = trivia.active_trivia['hint']
                             winner_name = user_mapping.get(str(msg.user_id), "Someone")
 
-                            win_text = f"🎉 CORRECT! {winner_name} got it right.\n\nIt was indeed @{ans_name} (sent in {ans_hint})."
+                            win_text = f"🎉 CORRECT! {winner_name} got it right.\n\nIt was indeed @{ans_name}"
                             scraper.send_message(thread_id, win_text, reply_to_message=msg)
 
                             try:
@@ -359,6 +359,10 @@ def main():
                                     print(f"Echo Chamber: MATCH FOUND (score={match['score']}) — source: \"{match['matched_source_text'][:60]}\" -> reply: \"{reply_text[:60]}\"")
                                     log_jarvis_interaction(username, clean_prompt, "ECHO", reply_text)
                                 else:
+                                    try:
+                                        scraper.cl.direct_send_reaction(thread_id, msg.id, random.choice(['👅', '👍🏻', '✋🏻', '🗣', '🙏']))
+                                    except Exception as e:
+                                        print(f"Could not react: {e}")
                                     reply_text = None
                                     print(f"Echo Chamber: NO MATCH FOUND for \"{clean_prompt[:60]}\" — ghosting.")
                                     log_jarvis_interaction(username, clean_prompt, "GHOSTED")
