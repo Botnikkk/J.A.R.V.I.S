@@ -15,12 +15,11 @@ class InstagramScraper:
         print("Loading trusted session settings...")
 
         if not os.path.exists(self.settings_path):
-            
             raise FileNotFoundError(
                 f"{self.settings_path} not found. This bot expects a pre-authenticated "
                 "session file — no username/password login is attempted."
             )
-        
+
         settings = self.cl.load_settings(self.settings_path)
         self.cl.set_settings(settings)
 
@@ -31,18 +30,20 @@ class InstagramScraper:
             if ds_user_id:
                 self.cl.user_id = int(ds_user_id)
 
-        # Lightweight check to confirm the session is actually still valid
-        settings = self.cl.load_settings(self.settings_path)
-        self.cl.set_settings(settings)
-
-        if not self.cl.user_id:
-            ds_user_id = self.cl.cookie_dict.get("ds_user_id")
-            if ds_user_id:
-                self.cl.user_id = int(ds_user_id)
+        # Lightweight check to confirm the session is actually still valid —
+        # catches an expired session here, at startup, instead of it failing
+        # mysteriously on the first real API call mid-poll.
+        try:
+            self.cl.get_timeline_feed()
+        except Exception as e:
+            raise RuntimeError(
+                f"settings.json loaded but the session looks invalid/expired ({e}). "
+                "You'll need to regenerate settings.json from a fresh authenticated session."
+            )
 
         print("Disguise loaded successfully. Ready to run!")
 
-    def get_group_chat_data(self, gc_name, limit=500):
+    def get_group_chat_data(self, gc_name, limit=500, ignored_ids=None):
         threads = self.cl.direct_threads(amount=20)
         target_thread = None
 
@@ -62,35 +63,23 @@ class InstagramScraper:
             user_mapping[str(self.cl.user_id)] = "Bot_Account"
 
         messages = self.cl.direct_messages(target_thread.id, amount=limit)
-        IGNORED_IDS = {"37797976551", "64528677628"} 
-        
-        filtered_messages = []
-        for msg in messages:
-            if str(msg.user_id) not in IGNORED_IDS:
-                filtered_messages.append(msg)
-                
+
+        ignored_ids = ignored_ids or set()
+        filtered_messages = [m for m in messages if str(m.user_id) not in ignored_ids]
+
         return filtered_messages, user_mapping, target_thread.id
 
     def send_message(self, thread_id, text, reply_to_message=None):
-            """Sends a message to the chat, natively replying to a specific message if provided."""
-            try:
-                if reply_to_message:
-                    # instagrapi expects the message ID string, not the full object!
-                    # We safely extract the ID from the message object passed in.
-                    message_id = getattr(reply_to_message, 'id', None)
-                    
-                    if message_id:
-                        self.cl.direct_send(
-                            text, 
-                            thread_ids=[int(thread_id)], 
-                            reply_to_message=message_id
-                        )
-                    else:
-                        # Fallback if the object somehow didn't have an ID
-                        self.cl.direct_send(text, thread_ids=[int(thread_id)])
+        """Sends a message to the chat, natively replying to a specific
+        message if provided. instagrapi 2.18.16+ supports this directly."""
+        try:
+            if reply_to_message:
+                message_id = getattr(reply_to_message, 'id', None)
+                if message_id:
+                    self.cl.direct_send(text, thread_ids=[int(thread_id)], reply_to_message=message_id)
                 else:
-                    # Sends a standard message
                     self.cl.direct_send(text, thread_ids=[int(thread_id)])
-                    
-            except Exception as e:
-                print(f"⚠️ Failed to send message: {e}")
+            else:
+                self.cl.direct_send(text, thread_ids=[int(thread_id)])
+        except Exception as e:
+            print(f"⚠️ Failed to send message: {e}")

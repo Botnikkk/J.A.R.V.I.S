@@ -23,7 +23,7 @@ from features.fun_commands import (
     format_convo,
     format_qna,
 )
-    
+
 def export_messages_to_files(messages, user_mapping, folder_name="messages"):
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
@@ -61,15 +61,15 @@ def find_new_messages(messages, last_processed_id):
 def detect_command(text, sender_id, owner_user_id):
     t = (text or "").lower()
     tokens = [tok.strip(",.!?:;") for tok in t.split()]
-    
+
     if 'jarvis' not in tokens:
         return None
-        
+
     if str(sender_id) != str(owner_user_id):
         chance = random.randint(0, 50)
         if chance == 6:
             return "chance"
-            
+
     if "update" in tokens and str(sender_id) == str(owner_user_id):
         return "update"
     if "analytics" in tokens:
@@ -88,9 +88,9 @@ def detect_command(text, sender_id, owner_user_id):
         return "whosaidit"
     if "answer" in tokens:
         return "answer"
-        
+
     return "echo"
-    
+
 def pick_command_to_run(new_batch, owner_user_id):
     candidates = []
     for msg in new_batch:
@@ -148,17 +148,17 @@ def build_vs_text(full_messages, user_mapping, command_text):
 
 def build_roast_text(full_messages, user_mapping, command_text, owner_user_id, timezone_offset_hours=0):
     ids = extract_user_ids_from_command(command_text, "roast", user_mapping, max_users=1)
-    
+
     if not ids:
         return "⚠️ Couldn't find who to roast. Grow a brain and actually tag a real person"
-        
+
     if owner_user_id and str(ids[0]) == str(owner_user_id):
         return "Sorry i can't roast the person who controls my existence."
-        
+
     analyzer = ChatAnalyzer(full_messages)
     stats = analyzer.get_user_stats(ids[0], timezone_offset_hours=timezone_offset_hours)
     name = user_mapping.get(ids[0], ids[0])
-    
+
     if not stats:
         return f"⚠️ No logged messages for {name} yet."
 
@@ -167,10 +167,10 @@ def build_roast_text(full_messages, user_mapping, command_text, owner_user_id, t
 def build_random_text(full_messages, user_mapping):
     analyzer = ChatAnalyzer(full_messages)
     msg = analyzer.get_random_message()
-    
+
     while msg and any(kw in (msg.text or "") for kw in ["jarvis", "Jarvis"]):
         msg = analyzer.get_random_message()
-        
+
     if not msg:
         return "⚠️ No messages logged yet."
     username = user_mapping.get(str(msg.user_id), "someone")
@@ -199,8 +199,10 @@ def main():
     CATCHUP_LIMIT = int(os.getenv("CATCHUP_LIMIT", 5000))
     OWNER_USER_ID = os.getenv("OWNER_USER_ID", "").strip() or None
     COMMAND_COOLDOWN_SECONDS = float(os.getenv("COMMAND_COOLDOWN_SECONDS", 1.5))
-    TIMEZONE_OFFSET_HOURS = int(os.getenv("TIMEZONE_OFFSET_HOURS", 0))
+    TIMEZONE_OFFSET_HOURS = int(os.getenv("TIMEZONE_OFFSET_HOURS", 5))
     ECHO_MAX_REPLY_GAP_SECONDS = float(os.getenv("ECHO_MAX_REPLY_GAP_SECONDS", 300))
+
+    IGNORED_IDS = {"37797976551", "64528677628"}  # Meta AI + old bot — single source of truth
 
     if not OWNER_USER_ID:
         print("⚠️ Warning: OWNER_USER_ID is not set — no one will be prioritized.")
@@ -208,24 +210,27 @@ def main():
     scraper = InstagramScraper()
     store = MessageStore()
     trivia = TriviaManager()
+
     try:
-        print("Loading trusted session settings...")
-        scraper.cl.load_settings("settings.json")
-        print("Disguise loaded successfully.")
+        scraper.login()
     except Exception as e:
-        print(f"Login/Settings Error: {e}")
+        print(f"Login Error: {e}")
         return
 
     bot_user_id = str(scraper.cl.user_id)
-    # 1. Put Meta AI and the old bot's IDs here:
-    IGNORED_IDS = {"37797976551", "64528677628"}
-    
-    # 2. Initialize passive behaviors with the IDs to ignore:
     passive = PassiveBehaviors(bot_user_id=bot_user_id, ignored_ids=IGNORED_IDS)
+
+    # Resolve thread_id first, independently of catch-up — so a catch-up
+    # failure below can never leave thread_id undefined and crash startup.
+    try:
+        _, _, thread_id = scraper.get_group_chat_data(TARGET_GC_NAME, limit=1, ignored_ids=IGNORED_IDS)
+    except Exception as e:
+        print(f"Fatal: couldn't resolve group chat thread: {e}")
+        return
 
     print(f"Catching up on message history (already logged: {len(store.seen_ids)})...")
     try:
-        catchup_messages, user_mapping, thread_id = scraper.get_group_chat_data(TARGET_GC_NAME, limit=CATCHUP_LIMIT)
+        catchup_messages, user_mapping, _ = scraper.get_group_chat_data(TARGET_GC_NAME, limit=CATCHUP_LIMIT, ignored_ids=IGNORED_IDS)
         added = store.append_new(catchup_messages, user_mapping, exclude_user_id=bot_user_id)
         print(f"Catch-up complete: {added} new message(s) logged. Total: {len(store.seen_ids)}\n")
     except Exception as e:
@@ -244,7 +249,7 @@ def main():
     while True:
         try:
             messages, user_mapping, thread_id = scraper.get_group_chat_data(
-                TARGET_GC_NAME, limit=POLL_FETCH_SIZE
+                TARGET_GC_NAME, limit=POLL_FETCH_SIZE, ignored_ids=IGNORED_IDS
             )
 
             new_count = store.append_new(messages, user_mapping, exclude_user_id=bot_user_id)
@@ -253,44 +258,40 @@ def main():
 
             if messages:
                 new_batch = find_new_messages(messages, last_processed_message_id)
-                # Check for hypocrites
+
                 callouts = passive.check_hypocrite(new_batch, user_mapping)
                 for callout_text in callouts:
-                    # We don't reply to a specific message, we just drop it in the chat
                     scraper.send_message(thread_id, callout_text)
                     print(f"💀 Hypocrite detected: {callout_text}")
-                # -------------------------------
-                # TRIVIA CHECK
+
                 if trivia.active_trivia:
                     for msg in new_batch:
                         if str(msg.user_id) == bot_user_id:
                             continue
                         text = getattr(msg, 'text', '')
-                        
+
                         if trivia.check_guess(text):
                             ans_name = trivia.active_trivia['author_name']
                             ans_hint = trivia.active_trivia['hint']
                             winner_name = user_mapping.get(str(msg.user_id), "Someone")
-                            
+
                             win_text = f"🎉 CORRECT! {winner_name} got it right.\n\nIt was indeed @{ans_name} (sent in {ans_hint})."
                             scraper.send_message(thread_id, win_text, reply_to_message=msg)
-                            
+
                             try:
                                 scraper.cl.direct_send_reaction(thread_id, msg.id, "⭐")
                             except Exception as e:
                                 print(f"Could not react: {e}")
-                                
+
                             trivia.active_trivia = None
                             break
 
-                # COMMAND DETECTION
                 command_msg, command_type = pick_command_to_run(new_batch, OWNER_USER_ID)
 
                 latest_id = getattr(messages[0], 'id', None)
                 if latest_id:
                     last_processed_message_id = latest_id
 
-                # COMMAND EXECUTION
                 if command_msg:
                     now = time.time()
                     time_since_last = now - last_command_time
@@ -319,7 +320,7 @@ def main():
                         elif command_type == "whosaidit":
                             analyzer = ChatAnalyzer(full_messages)
                             quote_data = analyzer.get_whosaidit_quote(min_words=5)
-                            
+
                             if quote_data:
                                 reply_text = trivia.start_game(quote_data, user_mapping)
                             else:
@@ -330,7 +331,7 @@ def main():
                             scraper.send_message(thread_id, "🔄 Pulling latest code from GitHub and restarting...")
                             try:
                                 subprocess.run(["git", "pull"], check=True)
-                                os.execv(sys.executable, ['python'] + sys.argv)    
+                                os.execv(sys.executable, ['python'] + sys.argv)
                             except Exception as e:
                                 scraper.send_message(thread_id, f"⚠️ Update failed: {e}")
                                 reply_text = None
@@ -367,7 +368,7 @@ def main():
 
         except Exception as e:
             print(f"\nPolling Warning: {e} - retrying in 3 seconds...")
-        
+
         time.sleep(1.5)
 
 if __name__ == "__main__":

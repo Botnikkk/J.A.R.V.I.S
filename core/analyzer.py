@@ -58,7 +58,11 @@ class ChatAnalyzer:
         exclaim_pct = (exclaim_count / total * 100) if total else 0
 
         def local_hour(ts):
-            return ts.astimezone().hour
+            # Always normalize to UTC first (consistent with the rest of
+            # this file's naive/aware handling), then apply the configurable
+            # offset — using ts.astimezone() directly here would silently
+            # mis-handle the naive entries in the log.
+            return (_ensure_utc(ts).hour + timezone_offset_hours) % 24
 
         night_owl_count = sum(1 for m in user_msgs if local_hour(m.timestamp) in (0, 1, 2, 3, 4))
         night_owl_pct = (night_owl_count / total * 100) if total else 0
@@ -139,9 +143,9 @@ class ChatAnalyzer:
             "author_id": chosen.user_id,
             "date_hint": chosen.timestamp.strftime("%B %Y")
         }
+
     def get_contextless_messages(self, msg_type="convo"):
         """Fetches smart, random messages for the convo and qna commands."""
-        # 1. Filter out garbage messages (links, 1-word texts, commands)
         valid_msgs = []
         for m in self.messages:
             text = getattr(m, "text", "")
@@ -152,7 +156,7 @@ class ChatAnalyzer:
                 continue
             if "http" in text_lower or "www." in text_lower:
                 continue
-            if len(text.split()) < 2:  # Skip 1-word replies (like "ok", "lol")
+            if len(text.split()) < 2:
                 continue
             valid_msgs.append(m)
 
@@ -160,15 +164,13 @@ class ChatAnalyzer:
             return None
 
         if msg_type == "convo":
-            # Group by unique users
             users = list(set(m.user_id for m in valid_msgs))
             if len(users) < 2:
                 return None
-            
-            # Pick 2 or 3 random people
+
             num_participants = random.choice([2, 3]) if len(users) >= 3 else 2
             chosen_users = random.sample(users, num_participants)
-            
+
             convo = []
             for uid in chosen_users:
                 user_msgs = [m for m in valid_msgs if m.user_id == uid]
@@ -176,16 +178,14 @@ class ChatAnalyzer:
             return convo
 
         elif msg_type == "qna":
-            # Find all questions
             questions = [m for m in valid_msgs if "?" in m.text]
             if not questions:
                 return None
             chosen_q = random.choice(questions)
-            
-            # Find all non-questions from a DIFFERENT user
+
             answers = [m for m in valid_msgs if m.user_id != chosen_q.user_id and "?" not in m.text]
             if not answers:
                 return None
             chosen_a = random.choice(answers)
-            
+
             return [chosen_q, chosen_a]
