@@ -1,3 +1,14 @@
+
+import instagrapi
+import inspect
+
+print("="*50)
+print("🚨 DIAGNOSTIC TRAP 🚨")
+print(f"Instagrapi loaded from: {instagrapi.__file__}")
+print(f"Direct_send signature: {inspect.signature(instagrapi.Client.direct_send)}")
+print("="*50)
+sys.exit() # This stops the bot from running further so you can read the output
+
 import sys
 import subprocess
 import os
