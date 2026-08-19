@@ -71,26 +71,26 @@ class InstagramScraper:
                 
         return filtered_messages, user_mapping, target_thread.id
 
-def send_message(self, thread_id, text, reply_to_message=None):
-        """Sends a message to the chat, natively replying to a specific message if provided."""
-        try:
-            if reply_to_message:
-                # instagrapi expects the message ID string, not the full object!
-                # We safely extract the ID from the message object passed in.
-                message_id = getattr(reply_to_message, 'id', None)
-                
-                if message_id:
-                    self.cl.direct_send(
-                        text, 
-                        thread_ids=[int(thread_id)], 
-                        reply_to_message=message_id
-                    )
+    def send_message(self, thread_id, text, reply_to_message=None):
+            """Sends a message to the chat, natively replying to a specific message if provided."""
+            try:
+                if reply_to_message:
+                    # instagrapi expects the message ID string, not the full object!
+                    # We safely extract the ID from the message object passed in.
+                    message_id = getattr(reply_to_message, 'id', None)
+                    
+                    if message_id:
+                        self.cl.direct_send(
+                            text, 
+                            thread_ids=[int(thread_id)], 
+                            reply_to_message=message_id
+                        )
+                    else:
+                        # Fallback if the object somehow didn't have an ID
+                        self.cl.direct_send(text, thread_ids=[int(thread_id)])
                 else:
-                    # Fallback if the object somehow didn't have an ID
+                    # Sends a standard message
                     self.cl.direct_send(text, thread_ids=[int(thread_id)])
-            else:
-                # Sends a standard message
-                self.cl.direct_send(text, thread_ids=[int(thread_id)])
-                
-        except Exception as e:
-            print(f"⚠️ Failed to send message: {e}")
+                    
+            except Exception as e:
+                print(f"⚠️ Failed to send message: {e}")
