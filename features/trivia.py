@@ -28,11 +28,11 @@ class TriviaManager:
             "56838775794": [ "nishtha", "nish"],
         }
 
-    def start_game(self, analyzer, user_mapping, max_attempts=25):
+    def start_game(self, analyzerObj, user_mapping, max_attempts=25):
         alert_printed = False
 
         for _ in range(max_attempts):
-            quote_data = analyzer.get_whosaidit_quote(min_words=5)
+            quote_data = analyzerObj.get_whosaidit_quote(min_words=5)
             if not quote_data:
                 break
 
