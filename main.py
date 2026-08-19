@@ -202,7 +202,7 @@ def main():
     TIMEZONE_OFFSET_HOURS = int(os.getenv("TIMEZONE_OFFSET_HOURS", 5))
     ECHO_MAX_REPLY_GAP_SECONDS = float(os.getenv("ECHO_MAX_REPLY_GAP_SECONDS", 300))
 
-    IGNORED_IDS = {"37797976551", "64528677628"}  # Meta AI + old bot — single source of truth
+    IGNORED_IDS = {"37797976551", "64528677628"}  # Meta AI + old bot
 
     if not OWNER_USER_ID:
         print("⚠️ Warning: OWNER_USER_ID is not set — no one will be prioritized.")
@@ -221,8 +221,6 @@ def main():
     bot_user_id = str(scraper.cl.user_id)
     passive = PassiveBehaviors(bot_user_id=bot_user_id, ignored_ids=IGNORED_IDS)
 
-    # Resolve thread_id first, independently of catch-up — so a catch-up
-    # failure below can never leave thread_id undefined and crash startup.
     try:
         _, _, thread_id = scraper.get_group_chat_data(TARGET_GC_NAME, limit=1, ignored_ids=IGNORED_IDS)
     except Exception as e:
@@ -271,13 +269,10 @@ def main():
                             continue
                         text = getattr(msg, 'text', '')
                         
-                        # Store the exact word they guessed correctly
                         matched_alias = trivia.check_guess(text)
                         
                         if matched_alias:
                             winner_name = user_mapping.get(str(msg.user_id), "Someone")
-                            
-                            # Notice there is no @ symbol here anymore!
                             win_text = f"🎉 CORRECT! {winner_name} got it right.\n\nIt was indeed {matched_alias}."
                             scraper.send_message(thread_id, win_text, reply_to_message=msg)
                             
@@ -322,13 +317,9 @@ def main():
                             reply_text = build_qna_text(full_messages, user_mapping)
                         elif command_type == "whosaidit":
                             analyzerObj = ChatAnalyzer(full_messages)
-                            quote_data = analyzerObj.get_whosaidit_quote(min_words=5)
-                            if quote_data:
-                                reply_text = trivia.start_game(quote_data, user_mapping)
-                                if not reply_text:
-                                    reply_text = "⚠️ Couldn't find a quote from an active member in the database. Try again."
-                            else:
-                                reply_text = "⚠️ Everyone here is too boring. I couldn't find a good quote."
+                            reply_text = trivia.start_game(analyzerObj, user_mapping)
+                            if not reply_text:
+                                reply_text = "⚠️ Couldn't find a quote from a registered member in the database. Try again."
                         elif command_type == "answer":
                             reply_text = trivia.get_answer()
                         elif command_type == "update":
@@ -367,7 +358,6 @@ def main():
                                     print(f"Echo Chamber: NO MATCH FOUND for \"{clean_prompt[:60]}\" — reacting instead.")
                                     log_jarvis_interaction(username, clean_prompt, "GHOSTED")
                                     
-                                    # React to the message if there's no reply found
                                     try:
                                         no_reply_emojis = ["👀", "🤷", "🤔", "💀", "😶", "❓", "👍🏻", "👅"]
                                         chosen_emoji = random.choice(no_reply_emojis)
@@ -375,7 +365,8 @@ def main():
                                         print(f"Reacted with {chosen_emoji} to message.")
                                     except Exception as e:
                                         print(f"Could not react to message: {e}")
-                        if reply_text :
+
+                        if reply_text:
                             scraper.send_message(thread_id, reply_text, reply_to_message=command_msg)
                         print("💤 Resuming background watch loop...")
 
