@@ -372,6 +372,7 @@ def main():
                                         print(f"Reacted with {chosen_emoji} to message.")
                                     except Exception as e:
                                         print(f"Could not react to message: {e}")
+                        if reply_text :
                             scraper.send_message(thread_id, reply_text, reply_to_message=command_msg)
                         print("💤 Resuming background watch loop...")
 
