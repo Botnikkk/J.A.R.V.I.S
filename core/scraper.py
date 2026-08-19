@@ -72,8 +72,18 @@ class InstagramScraper:
         return filtered_messages, user_mapping, target_thread.id
 
     def send_message(self, thread_id, text, reply_to_message=None):
-            try:
-                self.cl.direct_send(text, thread_ids=[thread_id])
-                return
-            except TypeError as e:
-                raise
+        """Sends a message to the chat, natively replying to a specific message if provided."""
+        try:
+            if reply_to_message:
+                # This triggers the native Instagram "Replying to..." UI feature
+                self.cl.direct_send(
+                    text, 
+                    thread_ids=[int(thread_id)], 
+                    reply_to_message=reply_to_message
+                )
+            else:
+                # Sends a standard message
+                self.cl.direct_send(text, thread_ids=[int(thread_id)])
+                
+        except Exception as e:
+            print(f"⚠️ Failed to send message: {e}")
