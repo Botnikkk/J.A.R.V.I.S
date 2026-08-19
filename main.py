@@ -322,7 +322,6 @@ def main():
                             reply_text = build_qna_text(full_messages, user_mapping)
                         elif command_type == "whosaidit":
                             analyzerObj = ChatAnalyzer(full_messages)
-                            reply_text = trivia.start_game(analyzerObj, user_mapping)
                             quote_data = analyzerObj.get_whosaidit_quote(min_words=5)
                             if quote_data:
                                 reply_text = trivia.start_game(quote_data, user_mapping)
