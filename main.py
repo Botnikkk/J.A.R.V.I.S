@@ -342,6 +342,7 @@ def main():
                             username = user_mapping.get(str(command_msg.user_id), "Unknown")
                             prompt = command_msg.text
                             clean_prompt = " ".join([tok for tok in prompt.split() if tok.lower().strip(",.!?:;") != "jarvis"])
+                            
                             smalltalk_reply = get_smalltalk_reply(clean_prompt)
                             if smalltalk_reply:
                                 reply_text = smalltalk_reply
@@ -359,15 +360,18 @@ def main():
                                     print(f"Echo Chamber: MATCH FOUND (score={match['score']}) — source: \"{match['matched_source_text'][:60]}\" -> reply: \"{reply_text[:60]}\"")
                                     log_jarvis_interaction(username, clean_prompt, "ECHO", reply_text)
                                 else:
-                                    try:
-                                        scraper.cl.direct_send_reaction(thread_id, msg.id, random.choice(['👅', '👍🏻', '✋🏻', '🗣', '🙏']))
-                                    except Exception as e:
-                                        print(f"Could not react: {e}")
                                     reply_text = None
-                                    print(f"Echo Chamber: NO MATCH FOUND for \"{clean_prompt[:60]}\" — ghosting.")
+                                    print(f"Echo Chamber: NO MATCH FOUND for \"{clean_prompt[:60]}\" — reacting instead.")
                                     log_jarvis_interaction(username, clean_prompt, "GHOSTED")
-
-                        if reply_text:
+                                    
+                                    # React to the message if there's no reply found
+                                    try:
+                                        no_reply_emojis = ["👀", "🤷", "🤔", "💀", "😶", "❓", "👍🏻", "👅"]
+                                        chosen_emoji = random.choice(no_reply_emojis)
+                                        scraper.cl.direct_send_reaction(thread_id, command_msg.id, chosen_emoji)
+                                        print(f"Reacted with {chosen_emoji} to message.")
+                                    except Exception as e:
+                                        print(f"Could not react to message: {e}")
                             scraper.send_message(thread_id, reply_text, reply_to_message=command_msg)
                         print("💤 Resuming background watch loop...")
 
