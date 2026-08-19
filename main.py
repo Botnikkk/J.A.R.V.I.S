@@ -212,11 +212,12 @@ def main():
     trivia = TriviaManager()
 
     try:
-        scraper.login()
+        print("Loading trusted session settings...")
+        scraper.cl.load_settings("settings.json")
+        print("Disguise loaded successfully.")
     except Exception as e:
-        print(f"Login Error: {e}")
+        print(f"Login/Settings Error: {e}")
         return
-
     bot_user_id = str(scraper.cl.user_id)
     passive = PassiveBehaviors(bot_user_id=bot_user_id, ignored_ids=IGNORED_IDS)
 
