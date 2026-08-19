@@ -1,14 +1,3 @@
-
-import instagrapi
-import inspect
-
-print("="*50)
-print("🚨 DIAGNOSTIC TRAP 🚨")
-print(f"Instagrapi loaded from: {instagrapi.__file__}")
-print(f"Direct_send signature: {inspect.signature(instagrapi.Client.direct_send)}")
-print("="*50)
-sys.exit() # This stops the bot from running further so you can read the output
-
 import sys
 import subprocess
 import os
@@ -343,7 +332,7 @@ def main():
                             scraper.send_message(thread_id, "🔄 Pulling latest code from GitHub and restarting...")
                             try:
                                 subprocess.run(["git", "pull"], check=True)
-                                os.execv(sys.executable, ['python'] + sys.argv)
+                                os.execv(sys.executable, ['python3'] + sys.argv)
                             except Exception as e:
                                 scraper.send_message(thread_id, f"⚠️ Update failed: {e}")
                                 reply_text = None
