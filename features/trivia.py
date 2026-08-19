@@ -6,7 +6,7 @@ class TriviaManager:
 
         # STRICTLY USER IDs AS KEYS. 
         # The FIRST item in the list is the default answer JARVIS will use if nobody guesses it.
-        self.aliases = {
+        self.user_aliases = {
             "58236872636": ["nikkk", "nik", "nikk", "nikki",  "nikhil"],
             "58396043097": ["vishwash", "vish",  "vishu"],
             "48785894981": ["hibi", "hiba"],

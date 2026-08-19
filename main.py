@@ -270,20 +270,22 @@ def main():
                         if str(msg.user_id) == bot_user_id:
                             continue
                         text = getattr(msg, 'text', '')
-
-                        if trivia.check_guess(text):
-                            ans_name = trivia.active_trivia['author_name']
-                            ans_hint = trivia.active_trivia['hint']
+                        
+                        # Store the exact word they guessed correctly
+                        matched_alias = trivia.check_guess(text)
+                        
+                        if matched_alias:
                             winner_name = user_mapping.get(str(msg.user_id), "Someone")
-
-                            win_text = f"🎉 CORRECT! {winner_name} got it right.\n\nIt was indeed @{ans_name}"
+                            
+                            # Notice there is no @ symbol here anymore!
+                            win_text = f"🎉 CORRECT! {winner_name} got it right.\n\nIt was indeed {matched_alias}."
                             scraper.send_message(thread_id, win_text, reply_to_message=msg)
-
+                            
                             try:
                                 scraper.cl.direct_send_reaction(thread_id, msg.id, "⭐")
                             except Exception as e:
                                 print(f"Could not react: {e}")
-
+                                
                             trivia.active_trivia = None
                             break
 
