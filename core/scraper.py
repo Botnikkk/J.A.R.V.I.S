@@ -69,7 +69,7 @@ class InstagramScraper:
 
         return filtered_messages, user_mapping, target_thread.id
 
-def send_message(self, thread_id, text, reply_to_message=None):
+    def send_message(self, thread_id, text, reply_to_message=None):
         try:
             if reply_to_message:
                 try:
