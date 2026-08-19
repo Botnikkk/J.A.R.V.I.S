@@ -69,21 +69,27 @@ class InstagramScraper:
 
         return filtered_messages, user_mapping, target_thread.id
 
-    def send_message(self, thread_id, text, reply_to_message=None):
+def send_message(self, thread_id, text, reply_to_message=None):
         try:
             if reply_to_message:
-                message_id = getattr(reply_to_message, 'id', None)
-                if message_id:
-                    try:
-                        self.cl.direct_send(text, thread_ids=[int(thread_id)], reply_to_message=message_id)
-                        return
-                    except TypeError as e:
-                        if "reply_to_message" in str(e):
-                            print("⚠️  This instagrapi version doesn't support reply_to_message — sending as a plain message instead.")
-                        else:
-                            raise
+                try:
+                    self.cl.direct_send(
+                        text, 
+                        thread_ids=[int(thread_id)], 
+                        reply_to_message=reply_to_message
+                    )
+                    return
+                except TypeError as e:
+                    if "reply_to_message" in str(e):
+                        print("⚠️ This instagrapi version doesn't support reply_to_message — sending as a plain message instead.")
+                    else:
+                        raise
+                except AttributeError:
+                    print("⚠️ Invalid message object for reply — falling back to a plain message.")
+                
                 self.cl.direct_send(text, thread_ids=[int(thread_id)])
             else:
                 self.cl.direct_send(text, thread_ids=[int(thread_id)])
+                
         except Exception as e:
             print(f"⚠️ Failed to send message: {e}")
