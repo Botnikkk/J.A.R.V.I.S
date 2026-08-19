@@ -37,7 +37,16 @@ def _tokenize(text):
 
 
 def _looks_like_command(text):
-    return text.strip().startswith(COMMAND_PREFIXES)
+    """
+    Checks if a message is addressed to a bot rather than the group.
+    Filters out prefix commands AND anything starting with 'jarvis'.
+    """
+    t = text.lower().strip()
+    if t.startswith(COMMAND_PREFIXES):
+        return True
+    if t.startswith("jarvis"):
+        return True
+    return False
 
 
 class EchoChamber:
@@ -122,6 +131,7 @@ class EchoChamber:
             original_tokens = self.tokens_by_pos.get(pos, [])
             original_text = getattr(original_msg, "text", "") or ""
             
+            # Skips the source if it was a command or addressed to JARVIS
             if _looks_like_command(original_text): 
                 continue
                 
@@ -135,19 +145,17 @@ class EchoChamber:
             reply_text = getattr(reply_msg, "text", None)
             if not reply_text: 
                 continue
+                
+            # Skips the reply if it was a command or addressed to JARVIS
             if _looks_like_command(reply_text): 
                 continue
 
             # UPGRADE 3: The Cross-Talk Tagging Filter
-            # If the reply tags someone specifically (@username), but the original 
-            # prompt didn't, it's cross talk. Throw it out.
             if "@" in reply_text and "@" not in trigger_text:
                 continue
             
             low_reply = reply_text.lower()
             if "http" in low_reply or ".com" in low_reply: 
-                continue
-            if low_reply.strip().startswith("jarvis"): 
                 continue
             
             reply_word_count = len(reply_text.split())
@@ -193,7 +201,6 @@ class EchoChamber:
             avg_anchor_score = sum(r["anchor_score"] for r in replies) / freq
             
             # UPGRADE 4: True Consensus Weighting
-            # It heavily rewards a reply if MULTIPLE people used it for the same trigger.
             consensus_score = avg_anchor_score + ((freq - 1) * 1.5)
             
             best_reply_obj = max(replies, key=lambda x: x["anchor_score"])
@@ -208,13 +215,10 @@ class EchoChamber:
         cluster_scores.sort(key=lambda x: x["score"], reverse=True)
         
         # UPGRADE 5: The "Ghosting" Rule
-        # If the highest score doesn't hit 2.0, JARVIS will intentionally 
-        # leave you on read because he doesn't have a confident reply.
         if cluster_scores[0]["score"] < 2.0:
             return None
         
         top_candidates = cluster_scores[:3]
-        # Only randomly select from the top 3 if they are all passing the threshold
         safe_candidates = [c for c in top_candidates if c["score"] >= 2.0]
         
         return random.choice(safe_candidates)
