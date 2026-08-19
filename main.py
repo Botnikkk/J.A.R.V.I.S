@@ -323,9 +323,11 @@ def main():
                         elif command_type == "whosaidit":
                             analyzer = ChatAnalyzer(full_messages)
                             reply_text = trivia.start_game(analyzer, user_mapping)
-
+                            quote_data = analyzer.get_whosaidit_quote(min_words=5)
                             if quote_data:
                                 reply_text = trivia.start_game(quote_data, user_mapping)
+                                if not reply_text:
+                                    reply_text = "⚠️ Couldn't find a quote from an active member in the database. Try again."
                             else:
                                 reply_text = "⚠️ Everyone here is too boring. I couldn't find a good quote."
                         elif command_type == "answer":
