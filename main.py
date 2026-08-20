@@ -205,7 +205,7 @@ def build_qna_text(full_messages, user_mapping):
     return format_qna(qna_msgs, user_mapping)
 
 
-def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
+def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=3, wake_hour=9):
     now = datetime.now()
     if sleep_start_hour <= now.hour < wake_hour:
         wake_time = now.replace(hour=wake_hour, minute=0,
@@ -568,8 +568,7 @@ def main():
             time.sleep(wait_time)
             continue
 
-        # Human-like randomized polling delay (4.0s - 7.5s)
-        time.sleep(random.uniform(4.0, 7.5))
+        time.sleep(random.uniform(5.0, 15.0))
 
 
 if __name__ == "__main__":
