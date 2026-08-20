@@ -214,33 +214,47 @@ def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
             except Exception:
                 pass
 
-def simulate_feed_scroll(scraper, thread_id):
-    # scrolls every ~5min
+def simulate_distraction(scraper, thread_id):
+    # 1-in-100 chance to get distracted
     if random.randint(1, 50) == 1:
-        scroll_seconds = random.randint(30, 90)
-        scroll_msg = f"📱 Scrolling the feed for {scroll_seconds}s to avoid bot detection. BRB."
-        print(f"\n{scroll_msg}")
+        # Randomly choose between timeline feed or Explore page (zero followers required)
+        action = random.choice(["scroll", "explore"])
         
-        try:
-            scraper.send_message(thread_id, scroll_msg)
-            scraper.cl.timeline_feed()
-        except Exception as e:
-            print(f"Scroll simulation error: {e}")
-            
-        time.sleep(scroll_seconds)
-        
-        try:
-            scraper.send_message(thread_id, "👀 Back from Doom scrolling.")
-        except Exception:
-            pass
+        if action == "scroll":
+            scroll_seconds = random.randint(30, 90)
+            scroll_msg = f"📱 Scrolling the timeline for {scroll_seconds}s to avoid bot detection. BRB."
+            print(f"\n{scroll_msg}")
+            try:
+                scraper.send_message(thread_id, scroll_msg)
+                scraper.cl.timeline_feed()
+            except Exception as e:
+                print(f"Scroll simulation error: {e}")
+            time.sleep(scroll_seconds)
+            try:
+                scraper.send_message(thread_id, "👀 Back from Doom scrolling.")
+            except Exception:
+                pass
+                
+        elif action == "explore":
+            explore_seconds = random.randint(15, 60)
+            explore_msg = f"🧠 Brain rotting on the Explore page for {explore_seconds}s so zuck doesn't bite my aah. BRB."
+            print(f"\n{explore_msg}")
+            try:
+                scraper.send_message(thread_id, explore_msg)
+                scraper.cl.explore()  # Fetches the Explore grid (no following required)
+            except Exception as e:
+                print(f"Explore simulation error: {e}")
+            time.sleep(explore_seconds)
+            try:
+                scraper.send_message(thread_id, "👀 Back from the Doom scrolling.")
+            except Exception:
+                pass
 
 def main():
     load_dotenv()
 
     TARGET_GC_NAME = os.getenv("TARGET_GC_NAME")
     TIMEOUT_MINUTES = int(os.getenv("TIMEOUT_MINUTES", 20))
-    POLL_FETCH_SIZE = int(os.getenv("POLL_FETCH_SIZE", 2))
-    CATCHUP_LIMIT = int(os.getenv("CATCHUP_LIMIT", 100))
     OWNER_USER_ID = os.getenv("OWNER_USER_ID", "").strip() or None
     TIMEZONE_OFFSET_HOURS = int(os.getenv("TIMEZONE_OFFSET_HOURS", 5))
     ECHO_MAX_REPLY_GAP_SECONDS = float(os.getenv("ECHO_MAX_REPLY_GAP_SECONDS", 300))
@@ -270,35 +284,30 @@ def main():
         print(f"Fatal: couldn't resolve group chat thread: {e}")
         return
 
-    print(f"Catching up on message history (already logged: {len(store.seen_ids)})...")
-    try:
-        catchup_messages, user_mapping, _ = scraper.get_group_chat_data(TARGET_GC_NAME, limit=CATCHUP_LIMIT, ignored_ids=IGNORED_IDS)
-        added = store.append_new(catchup_messages, user_mapping, exclude_user_id=bot_user_id)
-        print(f"Catch-up complete: {added} new message(s) logged. Total: {len(store.seen_ids)}\n")
-    except Exception as e:
-        print(f"Catch-up fetch failed: {e} — continuing with normal polling.\n")
-
     print("="*50)
     print("🤖 JARVIS — INSTAGRAM GC BOT ACTIVE 🤖")
     print("="*50)
     print(f"Target Group Chat: '{TARGET_GC_NAME}'")
     print("Polling active...")
-    scraper.send_message(thread_id, "🤖 J.A.R.V.I.S online.")
+    scraper.send_message(thread_id, "🤖 J.A.R.V.I.S online. (Catch-up moved to manual script)")
 
     last_processed_message_id = None
     consecutive_errors = 0
 
     while True:
         try:
-            # 1. Check Circadian Sleep Schedule (2 AM - 8 AM)
+            # 1. Check Circadian Sleep Schedule
             handle_circadian_sleep(scraper, thread_id)
 
-            # 2. Random Feed Scroll Simulation
-            simulate_feed_scroll(scraper, thread_id)
+            # 2. Distraction Simulation (Scroll Feed OR Explore Page)
+            simulate_distraction(scraper, thread_id)
 
-            # 3. Poll Group Chat Messages
+            # 3. Dynamic Fetch Size 
+            dynamic_fetch_size = random.randint(2, 5)
+
+            # 4. Poll Group Chat Messages
             messages, user_mapping, thread_id = scraper.get_group_chat_data(
-                TARGET_GC_NAME, limit=POLL_FETCH_SIZE, ignored_ids=IGNORED_IDS
+                TARGET_GC_NAME, limit=dynamic_fetch_size, ignored_ids=IGNORED_IDS
             )
 
             new_count = store.append_new(messages, user_mapping, exclude_user_id=bot_user_id)
@@ -418,18 +427,21 @@ def main():
 
         except Exception as e:
             consecutive_errors += 1
-            print(f"\nPolling Warning: {e} - retrying in 5 seconds... ({consecutive_errors}/10)")
+            # Exponential Backoff Formula: 5s, 10s, 20s, 40s...
+            wait_time = 5 * (2 ** (consecutive_errors - 1))
+            
+            print(f"\nPolling Warning: {e} - backing off for {wait_time} seconds... ({consecutive_errors}/5)")
 
-            if consecutive_errors >= 10:
+            if consecutive_errors >= 5:
                 stop_time = datetime.now().strftime("%I:%M:%S %p on %d/%m/%Y")
                 print("\n" + "🚨" * 20)
                 print(" AUTO-KILL SWITCH ENGAGED ")
-                print(" 10 consecutive API/Network errors encountered.")
+                print(" 5 consecutive API/Network errors encountered.")
                 print(f" Bot safely stopped at: {stop_time}")
                 print("🚨" * 20 + "\n")
                 sys.exit(1)
 
-            time.sleep(5)
+            time.sleep(wait_time)
             continue
 
         # Human-like randomized polling delay (4.0s - 7.5s)
