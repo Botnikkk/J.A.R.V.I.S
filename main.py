@@ -24,6 +24,25 @@ from features.fun_commands import (
     format_qna,
 )
 
+try:
+    from instagrapi.exceptions import (
+        LoginRequired,
+        ClientLoginRequired,
+        ChallengeRequired,
+        PleaseWaitFewMinutes,
+        TwoFactorRequired,
+    )
+    AUTH_EXCEPTIONS = (
+        LoginRequired,
+        ClientLoginRequired,
+        ChallengeRequired,
+        PleaseWaitFewMinutes,
+        TwoFactorRequired,
+    )
+except ImportError:
+    # Fall back to string-matching if instagrapi's exception module shape changes
+    AUTH_EXCEPTIONS = ()
+
 
 def export_messages_to_files(messages, user_mapping, folder_name="messages"):
     if not os.path.exists(folder_name):
@@ -205,7 +224,7 @@ def build_qna_text(full_messages, user_mapping):
     return format_qna(qna_msgs, user_mapping)
 
 
-def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=3, wake_hour=9):
+def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
     now = datetime.now()
     if sleep_start_hour <= now.hour < wake_hour:
         wake_time = now.replace(hour=wake_hour, minute=0,
@@ -232,92 +251,116 @@ def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=3, wake_hour=9):
 
 
 def simulate_distraction(scraper, thread_id):
-    # 1-in-200 chance to get distracted
-    if random.randint(1, 200) == 1:
-        action = random.choice(["scroll", "explore"])
+    explore_seconds = random.randint(15, 60)
+    explore_msg = f"🧠 Brain rotting on meme pages for {explore_seconds}s. BRB."
+    print(f"\n{explore_msg}")
 
-        if action == "scroll":
-            scroll_seconds = random.randint(30, 90)
-            scroll_msg = f"📱 Scrolling the timeline for {scroll_seconds}s to avoid bot detection. BRB."
-            print(f"\n{scroll_msg}")
+    medias = []
+    try:
+        scraper.send_message(thread_id, explore_msg)
+
+        # CACHED NUMERICAL IDs OF MEME PAGES
+        meme_page_ids = [
+            1491142059,
+            1423380971,
+            2713831542,
+            2136831433,
+            5405755957,
+            2374691999,
+            1431724849,
+            1419706373,
+            6175715373,
+            319018352,
+        ]
+        target_page_id = random.choice(meme_page_ids)
+
+        # Fetch directly using the numerical ID (lowered amount to 5 for safety)
+        medias = scraper.cl.user_medias(target_page_id, amount=5)
+
+    except Exception as e:
+        print(f"Meme page simulation error: {e}")
+
+    # Sleep to simulate actually watching the content
+    time.sleep(explore_seconds)
+
+    # ---------------------------------------------------------
+    # 25% chance to share a meme after watching
+    # ---------------------------------------------------------
+    if medias and random.randint(1, 4) == 1:
+        try:
+            # PUT YOUR FRIENDS' NUMERICAL INSTAGRAM IDS HERE
+            REEL_BUDDIES = [56838775794, 22625167653,
+                            58236872636]  # e.g., [11223344, 55667788]
+
+            random_media = random.choice(medias)
+            captions = ["real", "literally me",
+                        "literally you", "us", "chat is this real?"]
+            chosen_caption = random.choice(captions)
+
+            # 50/50 chance: Send to a random friend DM -OR- drop it in the GC
+            if REEL_BUDDIES and random.choice([True, False]):
+                target_user = int(random.choice(REEL_BUDDIES))
+                scraper.cl.direct_media_share(
+                    random_media.id, user_ids=[target_user])
+                print(f"📤 Sent a random meme to user {target_user}")
+            else:
+                scraper.cl.direct_media_share(
+                    random_media.id, thread_ids=[int(thread_id)])
+                time.sleep(2)
+                scraper.send_message(thread_id, chosen_caption)
+                print("📤 Dropped a random meme in the GC.")
+
+        except Exception as e:
+            print(f"Failed to share reel: {e}")
+
+    try:
+        scraper.send_message(thread_id, "👀 Back from the brain rot.")
+    except Exception:
+        pass
+
+
+def perform_login(scraper, settings_file, username, password):
+    """
+    Attempts to authenticate the scraper, preferring a cached session.
+    Returns True on success, False on failure. Never raises.
+    """
+    try:
+        if os.path.exists(settings_file):
+            print("📁 Found existing session. Loading settings...")
+            scraper.cl.load_settings(settings_file)
+            scraper.cl.login(username, password)
+            print("✅ Session validated successfully.")
+        else:
+            print("⚠️ No session file found. Logging in and generating new session...")
+            scraper.cl.login(username, password)
+            scraper.cl.dump_settings(settings_file)
+            print("💾 New session generated and saved to settings.json.")
+        return True
+    except Exception as e:
+        print(f"❌ Login attempt failed: {e}")
+        # If the cached session itself is the problem (corrupted/blacklisted),
+        # drop it so the next attempt does a clean credential login instead
+        # of retrying the same bad cookies forever.
+        if os.path.exists(settings_file):
             try:
-                scraper.send_message(thread_id, scroll_msg)
-                scraper.cl.get_timeline_feed()
-            except Exception as e:
-                print(f"Scroll simulation error: {e}")
-            time.sleep(scroll_seconds)
-            try:
-                scraper.send_message(thread_id, "👀 Back from Doom scrolling.")
-            except Exception:
+                os.remove(settings_file)
+                print(
+                    "🗑️ Removed stale session file; next attempt will do a fresh login.")
+            except OSError:
                 pass
+        return False
 
-        elif action == "explore":
-            explore_seconds = random.randint(15, 60)
-            explore_msg = f"🧠 Brain rotting on meme pages for {explore_seconds}s. BRB."
-            print(f"\n{explore_msg}")
 
-            medias = []
-            try:
-                scraper.send_message(thread_id, explore_msg)
-
-                # CACHED NUMERICAL IDs OF MEME PAGES
-                meme_page_ids = [
-                    1491142059,
-                    1423380971,
-                    2713831542,
-                    2136831433,
-                    5405755957,
-                    2374691999,
-                    1431724849,
-                    1419706373,
-                    6175715373,
-                    319018352,
-                ]
-                target_page_id = random.choice(meme_page_ids)
-
-                # Fetch directly using the numerical ID (lowered amount to 5 for safety)
-                medias = scraper.cl.user_medias(target_page_id, amount=5)
-
-            except Exception as e:
-                print(f"Meme page simulation error: {e}")
-
-            # Sleep to simulate actually watching the content
-            time.sleep(explore_seconds)
-
-            # ---------------------------------------------------------
-            # 25% chance to share a meme after watching
-            # ---------------------------------------------------------
-            if medias and random.randint(1, 4) == 1:
-                try:
-                    # PUT YOUR FRIENDS' NUMERICAL INSTAGRAM IDS HERE
-                    REEL_BUDDIES = [56838775794, 22625167653,
-                                    58236872636]  # e.g., [11223344, 55667788]
-
-                    random_media = random.choice(medias)
-                    captions = ["real", "literally me",
-                                "literally you", "us", "chat is this real?"]
-                    chosen_caption = random.choice(captions)
-
-                    # 50/50 chance: Send to a random friend DM -OR- drop it in the GC
-                    if REEL_BUDDIES and random.choice([True, False]):
-                        target_user = int(random.choice(REEL_BUDDIES))
-                        scraper.cl.direct_media_share(
-                            random_media.id, user_ids=[target_user])
-                        print(f"📤 Sent a random meme to user {target_user}")
-                    else:
-                        scraper.cl.direct_media_share(
-                            random_media.id, thread_ids=[int(thread_id)])
-                        time.sleep(2)
-                        scraper.send_message(thread_id, chosen_caption)
-                        print("📤 Dropped a random meme in the GC.")
-
-                except Exception as e:
-                    print(f"Failed to share reel: {e}")
-
-            try:
-                scraper.send_message(thread_id, "👀 Back from the brain rot.")
-            except Exception:
-                pass
+def is_auth_error(exc):
+    if AUTH_EXCEPTIONS and isinstance(exc, AUTH_EXCEPTIONS):
+        return True
+    # Fallback heuristic in case instagrapi raises a generic exception
+    # with an auth-related message (or AUTH_EXCEPTIONS is empty)
+    msg = str(exc).lower()
+    return any(kw in msg for kw in [
+        "login_required", "please wait a few minutes", "challenge_required",
+        "checkpoint_required", "not logged in", "csrftoken",
+    ])
 
 
 def main():
@@ -350,20 +393,8 @@ def main():
     trivia = TriviaManager()
 
     # --- THE SELF-HEALING SESSION BLOCK ---
-    try:
-        if os.path.exists(SETTINGS_FILE):
-            print("📁 Found existing session. Loading settings...")
-            scraper.cl.load_settings(SETTINGS_FILE)
-            # Logs in with cached cookies; only uses user/pass if cookies expired
-            scraper.cl.login(IG_USERNAME, IG_PASSWORD)
-            print("✅ Session validated successfully.")
-        else:
-            print("⚠️ No session file found. Logging in and generating new session...")
-            scraper.cl.login(IG_USERNAME, IG_PASSWORD)
-            scraper.cl.dump_settings(SETTINGS_FILE)
-            print("💾 New session generated and saved to settings.json.")
-    except Exception as e:
-        print(f"❌ Fatal Login Error: {e}")
+    if not perform_login(scraper, SETTINGS_FILE, IG_USERNAME, IG_PASSWORD):
+        print("❌ Fatal Login Error: could not authenticate on startup.")
         return
     # ----------------------------------------
 
@@ -394,7 +425,8 @@ def main():
             handle_circadian_sleep(scraper, thread_id)
 
             # 2. Distraction Simulation (Scroll Feed OR Explore Page)
-            simulate_distraction(scraper, thread_id)
+            if random.randint(1, 200) == 1:
+                simulate_distraction(scraper, thread_id)
 
             # 3. Dynamic Fetch Size
             dynamic_fetch_size = random.randint(2, 5)
@@ -550,6 +582,17 @@ def main():
 
         except Exception as e:
             consecutive_errors += 1
+
+            if is_auth_error(e):
+                print(f"\n🔑 Session invalidated ({e}). Attempting re-login...")
+                if perform_login(scraper, SETTINGS_FILE, IG_USERNAME, IG_PASSWORD):
+                    print("✅ Re-login successful. Resuming polling.")
+                    consecutive_errors = 0
+                    time.sleep(2)
+                    continue
+                else:
+                    print("❌ Re-login attempt failed.")
+
             # Exponential Backoff Formula: 5s, 10s, 20s, 40s...
             wait_time = 5 * (2 ** (consecutive_errors - 1))
 
@@ -568,7 +611,8 @@ def main():
             time.sleep(wait_time)
             continue
 
-        time.sleep(random.uniform(5.0, 15.0))
+        # Human-like randomized polling delay (4.0s - 7.5s)
+        time.sleep(random.uniform(5.0,  12.0))
 
 
 if __name__ == "__main__":
