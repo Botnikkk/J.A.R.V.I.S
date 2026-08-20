@@ -24,6 +24,7 @@ from features.fun_commands import (
     format_qna,
 )
 
+
 def export_messages_to_files(messages, user_mapping, folder_name="messages"):
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
@@ -39,12 +40,14 @@ def export_messages_to_files(messages, user_mapping, folder_name="messages"):
 
     for user_id, lines in user_texts.items():
         username = user_mapping.get(str(user_id), f"Unknown_User_{user_id}")
-        safe_username = "".join(c for c in username if c.isalnum() or c in ('_', '-'))
+        safe_username = "".join(
+            c for c in username if c.isalnum() or c in ('_', '-'))
         file_path = os.path.join(folder_name, f"{safe_username}_{user_id}.txt")
 
         with open(file_path, 'w', encoding='utf-8') as f:
             for line in lines:
                 f.write(line + "\n")
+
 
 def find_new_messages(messages, last_processed_id):
     if last_processed_id is None:
@@ -57,6 +60,7 @@ def find_new_messages(messages, last_processed_id):
         new_batch.append(msg)
     new_batch.reverse()
     return new_batch
+
 
 def detect_command(text, sender_id, owner_user_id):
     t = (text or "").lower()
@@ -91,6 +95,7 @@ def detect_command(text, sender_id, owner_user_id):
 
     return "echo"
 
+
 def pick_command_to_run(new_batch, owner_user_id):
     candidates = []
     for msg in new_batch:
@@ -108,6 +113,7 @@ def pick_command_to_run(new_batch, owner_user_id):
                 return msg, cmd
 
     return candidates[0]
+
 
 def build_analytics_text(full_messages, user_mapping, timeout_minutes):
     analyzer = ChatAnalyzer(full_messages)
@@ -129,8 +135,10 @@ def build_analytics_text(full_messages, user_mapping, timeout_minutes):
 
     return text
 
+
 def build_vs_text(full_messages, user_mapping, command_text):
-    ids = extract_user_ids_from_command(command_text, "vs", user_mapping, max_users=2)
+    ids = extract_user_ids_from_command(
+        command_text, "vs", user_mapping, max_users=2)
     if len(ids) < 2:
         return "⚠️ Couldn't find two users to compare. Grow a brain and actually tag a real person"
 
@@ -146,8 +154,10 @@ def build_vs_text(full_messages, user_mapping, command_text):
 
     return format_vs(name1, stats1, name2, stats2)
 
+
 def build_roast_text(full_messages, user_mapping, command_text, owner_user_id, timezone_offset_hours=0):
-    ids = extract_user_ids_from_command(command_text, "roast", user_mapping, max_users=1)
+    ids = extract_user_ids_from_command(
+        command_text, "roast", user_mapping, max_users=1)
 
     if not ids:
         return "⚠️ Couldn't find who to roast. Grow a brain and actually tag a real person"
@@ -156,13 +166,15 @@ def build_roast_text(full_messages, user_mapping, command_text, owner_user_id, t
         return "Sorry i can't roast the person who controls my existence."
 
     analyzer = ChatAnalyzer(full_messages)
-    stats = analyzer.get_user_stats(ids[0], timezone_offset_hours=timezone_offset_hours)
+    stats = analyzer.get_user_stats(
+        ids[0], timezone_offset_hours=timezone_offset_hours)
     name = user_mapping.get(ids[0], ids[0])
 
     if not stats:
         return f"⚠️ No logged messages for {name} yet."
 
     return format_roast(name, stats)
+
 
 def build_random_text(full_messages, user_mapping):
     analyzer = ChatAnalyzer(full_messages)
@@ -176,12 +188,14 @@ def build_random_text(full_messages, user_mapping):
     username = user_mapping.get(str(msg.user_id), "someone")
     return format_random(username, msg)
 
+
 def build_convo_text(full_messages, user_mapping):
     analyzer = ChatAnalyzer(full_messages)
     convo_msgs = analyzer.get_contextless_messages(msg_type="convo")
     if not convo_msgs:
         return "⚠️ Not enough valid messages to generate a conversation."
     return format_convo(convo_msgs, user_mapping)
+
 
 def build_qna_text(full_messages, user_mapping):
     analyzer = ChatAnalyzer(full_messages)
@@ -190,12 +204,14 @@ def build_qna_text(full_messages, user_mapping):
         return "⚠️ Not enough valid questions/answers to generate a Q&A."
     return format_qna(qna_msgs, user_mapping)
 
+
 def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
     now = datetime.now()
     if sleep_start_hour <= now.hour < wake_hour:
-        wake_time = now.replace(hour=wake_hour, minute=0, second=0, microsecond=0)
+        wake_time = now.replace(hour=wake_hour, minute=0,
+                                second=0, microsecond=0)
         sleep_seconds = (wake_time - now).total_seconds()
-        
+
         if sleep_seconds > 0:
             formatted_wake = wake_time.strftime("%I:%M %p")
             sleep_msg = f"😴 J.A.R.V.I.S is sleeping to maintain human hours. Offline until {formatted_wake}."
@@ -204,9 +220,9 @@ def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
                 scraper.send_message(thread_id, sleep_msg)
             except Exception:
                 pass
-            
+
             time.sleep(sleep_seconds)
-            
+
             wake_msg = "🌅 J.A.R.V.I.S awake and back online."
             print(f"\n{wake_msg}")
             try:
@@ -214,18 +230,19 @@ def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
             except Exception:
                 pass
 
+
 def simulate_distraction(scraper, thread_id):
-    # 1-in-50 chance to get distracted
-    if random.randint(1, 50) == 1:
+    # 1-in-100 chance to get distracted
+    if random.randint(1, 100) == 1:
         action = random.choice(["scroll", "explore"])
-        
+
         if action == "scroll":
             scroll_seconds = random.randint(30, 90)
             scroll_msg = f"📱 Scrolling the timeline for {scroll_seconds}s to avoid bot detection. BRB."
             print(f"\n{scroll_msg}")
             try:
                 scraper.send_message(thread_id, scroll_msg)
-                scraper.cl.timeline_feed()
+                scraper.cl.get_timeline_feed()
             except Exception as e:
                 print(f"Scroll simulation error: {e}")
             time.sleep(scroll_seconds)
@@ -233,49 +250,75 @@ def simulate_distraction(scraper, thread_id):
                 scraper.send_message(thread_id, "👀 Back from Doom scrolling.")
             except Exception:
                 pass
-                
+
         elif action == "explore":
             explore_seconds = random.randint(15, 60)
-            explore_msg = f"🧠 Brain rotting on the Explore page for {explore_seconds}s. BRB."
+            explore_msg = f"🧠 Brain rotting on meme pages for {explore_seconds}s. BRB."
             print(f"\n{explore_msg}")
-            
+
             medias = []
             try:
                 scraper.send_message(thread_id, explore_msg)
-                medias = scraper.cl.explore()  
+
+                # CACHED NUMERICAL IDs OF MEME PAGES
+                meme_page_ids = [
+                    1491142059,
+                    1423380971,
+                    2713831542,
+                    2136831433,
+                    5405755957,
+                    2374691999,
+                    1431724849,
+                    1419706373,
+                    6175715373,
+                    319018352,
+                ]
+                target_page_id = random.choice(meme_page_ids)
+
+                # Fetch directly using the numerical ID (lowered amount to 5 for safety)
+                medias = scraper.cl.user_medias(target_page_id, amount=5)
+
             except Exception as e:
-                print(f"Explore simulation error: {e}")
-                
+                print(f"Meme page simulation error: {e}")
+
+            # Sleep to simulate actually watching the content
             time.sleep(explore_seconds)
 
+            # ---------------------------------------------------------
+            # 25% chance to share a meme after watching
+            # ---------------------------------------------------------
             if medias and random.randint(1, 4) == 1:
                 try:
                     # PUT YOUR FRIENDS' NUMERICAL INSTAGRAM IDS HERE
-                    REEL_BUDDIES = ['22625167653', '58236872636']
-                    
-                    # Pick a random reel from the explore page
+                    REEL_BUDDIES = [56838775794, 22625167653,
+                                    58236872636]  # e.g., [11223344, 55667788]
+
                     random_media = random.choice(medias)
-                    
-                    captions = ["real", "literally me", "bruh", "us", "chat is this real?"]
+                    captions = ["real", "literally me",
+                                "literally you", "us", "chat is this real?"]
                     chosen_caption = random.choice(captions)
-                    
+
                     # 50/50 chance: Send to a random friend DM -OR- drop it in the GC
                     if REEL_BUDDIES and random.choice([True, False]):
                         target_user = int(random.choice(REEL_BUDDIES))
-                        scraper.cl.direct_media_share(random_media.id, user_ids=[target_user])
-                        print(f"📤 Sent a random reel to user {target_user}")
+                        scraper.cl.direct_media_share(
+                            random_media.id, user_ids=[target_user])
+                        print(f"📤 Sent a random meme to user {target_user}")
                     else:
-                        scraper.cl.direct_media_share(random_media.id, thread_ids=[int(thread_id)])
+                        scraper.cl.direct_media_share(
+                            random_media.id, thread_ids=[int(thread_id)])
+                        time.sleep(2)
                         scraper.send_message(thread_id, chosen_caption)
-                        print("📤 Dropped a random reel in the GC.")
-                        
+                        print("📤 Dropped a random meme in the GC.")
+
                 except Exception as e:
                     print(f"Failed to share reel: {e}")
 
             try:
-                scraper.send_message(thread_id, "👀 Back from the Explore page.")
+                scraper.send_message(thread_id, "👀 Back from the brain rot.")
             except Exception:
                 pass
+
 
 def main():
     load_dotenv()
@@ -284,9 +327,11 @@ def main():
     TIMEOUT_MINUTES = int(os.getenv("TIMEOUT_MINUTES", 20))
     OWNER_USER_ID = os.getenv("OWNER_USER_ID", "").strip() or None
     TIMEZONE_OFFSET_HOURS = int(os.getenv("TIMEZONE_OFFSET_HOURS", 5))
-    ECHO_MAX_REPLY_GAP_SECONDS = float(os.getenv("ECHO_MAX_REPLY_GAP_SECONDS", 300))
+    ECHO_MAX_REPLY_GAP_SECONDS = float(
+        os.getenv("ECHO_MAX_REPLY_GAP_SECONDS", 300))
 
-    IGNORED_IDS = {"37797976551", "64528677628", "34612692420"}  # Meta AI + old bot
+    IGNORED_IDS = {"37797976551", "64528677628",
+                   "34612692420"}  # Meta AI + old bot
 
     if not OWNER_USER_ID:
         print("⚠️ Warning: OWNER_USER_ID is not set — no one will be prioritized.")
@@ -303,10 +348,12 @@ def main():
         print(f"Login/Settings Error: {e}")
         return
     bot_user_id = str(scraper.cl.user_id)
-    passive = PassiveBehaviors(bot_user_id=bot_user_id, ignored_ids=IGNORED_IDS)
+    passive = PassiveBehaviors(
+        bot_user_id=bot_user_id, ignored_ids=IGNORED_IDS)
 
     try:
-        _, _, thread_id = scraper.get_group_chat_data(TARGET_GC_NAME, limit=1, ignored_ids=IGNORED_IDS)
+        _, _, thread_id = scraper.get_group_chat_data(
+            TARGET_GC_NAME, limit=1, ignored_ids=IGNORED_IDS)
     except Exception as e:
         print(f"Fatal: couldn't resolve group chat thread: {e}")
         return
@@ -316,7 +363,7 @@ def main():
     print("="*50)
     print(f"Target Group Chat: '{TARGET_GC_NAME}'")
     print("Polling active...")
-    scraper.send_message(thread_id, "🤖 J.A.R.V.I.S online. (Catch-up moved to manual script)")
+    scraper.send_message(thread_id, "🤖 J.A.R.V.I.S online.")
 
     last_processed_message_id = None
     consecutive_errors = 0
@@ -329,7 +376,7 @@ def main():
             # 2. Distraction Simulation (Scroll Feed OR Explore Page)
             simulate_distraction(scraper, thread_id)
 
-            # 3. Dynamic Fetch Size 
+            # 3. Dynamic Fetch Size
             dynamic_fetch_size = random.randint(2, 5)
 
             # 4. Poll Group Chat Messages
@@ -337,12 +384,15 @@ def main():
                 TARGET_GC_NAME, limit=dynamic_fetch_size, ignored_ids=IGNORED_IDS
             )
 
-            new_count = store.append_new(messages, user_mapping, exclude_user_id=bot_user_id)
+            new_count = store.append_new(
+                messages, user_mapping, exclude_user_id=bot_user_id)
             if new_count:
-                print(f"Stored {new_count} new message(s). Total logged: {len(store.seen_ids)}", end="\r", flush=True)
+                print(
+                    f"Stored {new_count} new message(s). Total logged: {len(store.seen_ids)}", end="\r", flush=True)
 
             if messages:
-                new_batch = find_new_messages(messages, last_processed_message_id)
+                new_batch = find_new_messages(
+                    messages, last_processed_message_id)
 
                 callouts = passive.check_hypocrite(new_batch, user_mapping)
                 for callout_text in callouts:
@@ -354,73 +404,90 @@ def main():
                         if str(msg.user_id) == bot_user_id:
                             continue
                         text = getattr(msg, 'text', '')
-                        
+
                         matched_alias = trivia.check_guess(text)
-                        
+
                         if matched_alias:
-                            winner_name = user_mapping.get(str(msg.user_id), "Someone")
+                            winner_name = user_mapping.get(
+                                str(msg.user_id), "Someone")
                             win_text = f"🎉 CORRECT! {winner_name} got it right.\n\nIt was indeed {matched_alias}."
-                            scraper.send_message(thread_id, win_text, reply_to_message=msg)
-                            
+                            scraper.send_message(
+                                thread_id, win_text, reply_to_message=msg)
+
                             try:
-                                scraper.cl.direct_send_reaction(thread_id, msg.id, "⭐")
+                                scraper.cl.direct_send_reaction(
+                                    thread_id, msg.id, "⭐")
                             except Exception as e:
                                 print(f"Could not react: {e}")
-                                
+
                             trivia.active_trivia = None
                             break
 
-                command_msg, command_type = pick_command_to_run(new_batch, OWNER_USER_ID)
+                command_msg, command_type = pick_command_to_run(
+                    new_batch, OWNER_USER_ID)
 
                 latest_id = getattr(messages[0], 'id', None)
                 if latest_id:
                     last_processed_message_id = latest_id
 
                 if command_msg:
-                    print(f"\nCommand Triggered: '{command_type}' by {user_mapping.get(str(command_msg.user_id))}")
+                    print(
+                        f"\nCommand Triggered: '{command_type}' by {user_mapping.get(str(command_msg.user_id))}")
 
                     full_messages = store.load_all(exclude_user_id=bot_user_id)
 
                     if command_type == "analytics":
                         export_messages_to_files(full_messages, user_mapping)
-                        reply_text = build_analytics_text(full_messages, user_mapping, TIMEOUT_MINUTES)
+                        reply_text = build_analytics_text(
+                            full_messages, user_mapping, TIMEOUT_MINUTES)
                     elif command_type == "vs":
-                        reply_text = build_vs_text(full_messages, user_mapping, command_msg.text)
+                        reply_text = build_vs_text(
+                            full_messages, user_mapping, command_msg.text)
                     elif command_type == "roast":
-                        reply_text = build_roast_text(full_messages, user_mapping, command_msg.text, OWNER_USER_ID, timezone_offset_hours=TIMEZONE_OFFSET_HOURS)
+                        reply_text = build_roast_text(
+                            full_messages, user_mapping, command_msg.text, OWNER_USER_ID, timezone_offset_hours=TIMEZONE_OFFSET_HOURS)
                     elif command_type == "random":
-                        reply_text = build_random_text(full_messages, user_mapping)
+                        reply_text = build_random_text(
+                            full_messages, user_mapping)
                     elif command_type == "convo":
-                        reply_text = build_convo_text(full_messages, user_mapping)
+                        reply_text = build_convo_text(
+                            full_messages, user_mapping)
                     elif command_type == "qna":
-                        reply_text = build_qna_text(full_messages, user_mapping)
+                        reply_text = build_qna_text(
+                            full_messages, user_mapping)
                     elif command_type == "whosaidit":
                         analyzerObj = ChatAnalyzer(full_messages)
-                        reply_text = trivia.start_game(analyzerObj, user_mapping)
+                        reply_text = trivia.start_game(
+                            analyzerObj, user_mapping)
                         if not reply_text:
                             reply_text = "⚠️ Couldn't find a quote from a registered member in the database. Try again."
                     elif command_type == "answer":
                         reply_text = trivia.get_answer()
                     elif command_type == "update":
-                        scraper.send_message(thread_id, "🔄 Pulling latest code from GitHub and restarting...")
+                        scraper.send_message(
+                            thread_id, "🔄 Pulling latest code from GitHub and restarting...")
                         try:
                             subprocess.run(["git", "pull"], check=True)
                             os.execv(sys.executable, ['python3'] + sys.argv)
                         except Exception as e:
-                            scraper.send_message(thread_id, f"⚠️ Update failed: {e}")
+                            scraper.send_message(
+                                thread_id, f"⚠️ Update failed: {e}")
                             reply_text = None
                     elif command_type == "chance":
                         reply_text = "Maa chuda mood nahi hai"
                     elif command_type == "echo":
-                        username = user_mapping.get(str(command_msg.user_id), "Unknown")
+                        username = user_mapping.get(
+                            str(command_msg.user_id), "Unknown")
                         prompt = command_msg.text
-                        clean_prompt = " ".join([tok for tok in prompt.split() if tok.lower().strip(",.!?:;") != "jarvis"])
-                        
+                        clean_prompt = " ".join(
+                            [tok for tok in prompt.split() if tok.lower().strip(",.!?:;") != "jarvis"])
+
                         smalltalk_reply = get_smalltalk_reply(clean_prompt)
                         if smalltalk_reply:
                             reply_text = smalltalk_reply
                             print(f"Smalltalk: matched -> \"{reply_text}\"")
-                            log_jarvis_interaction(username, clean_prompt, "SMALLTALK", reply_text)
+                            log_jarvis_interaction(
+                                username, clean_prompt, "SMALLTALK", reply_text)
                         else:
                             chamber = get_or_build_echo_chamber(full_messages)
                             match = chamber.find_echo(
@@ -430,23 +497,32 @@ def main():
                             )
                             if match:
                                 reply_text = match["reply_text"]
-                                print(f"Echo Chamber: MATCH FOUND (score={match['score']}) — source: \"{match['matched_source_text'][:60]}\" -> reply: \"{reply_text[:60]}\"")
-                                log_jarvis_interaction(username, clean_prompt, "ECHO", reply_text)
+                                print(
+                                    f"Echo Chamber: MATCH FOUND (score={match['score']}) — source: \"{match['matched_source_text'][:60]}\" -> reply: \"{reply_text[:60]}\"")
+                                log_jarvis_interaction(
+                                    username, clean_prompt, "ECHO", reply_text)
                             else:
                                 reply_text = None
-                                print(f"Echo Chamber: NO MATCH FOUND for \"{clean_prompt[:60]}\" — reacting instead.")
-                                log_jarvis_interaction(username, clean_prompt, "GHOSTED")
-                                
+                                print(
+                                    f"Echo Chamber: NO MATCH FOUND for \"{clean_prompt[:60]}\" — reacting instead.")
+                                log_jarvis_interaction(
+                                    username, clean_prompt, "GHOSTED")
+
                                 try:
-                                    no_reply_emojis = ["👀", "🤷", "🤔", "💀", "😶", "❓", "👍🏻", "👅"]
-                                    chosen_emoji = random.choice(no_reply_emojis)
-                                    scraper.cl.direct_send_reaction(thread_id, command_msg.id, chosen_emoji)
-                                    print(f"Reacted with {chosen_emoji} to message.")
+                                    no_reply_emojis = [
+                                        "👀", "🤷", "🤔", "💀", "😶", "❓", "👍🏻", "👅"]
+                                    chosen_emoji = random.choice(
+                                        no_reply_emojis)
+                                    scraper.cl.direct_send_reaction(
+                                        thread_id, command_msg.id, chosen_emoji)
+                                    print(
+                                        f"Reacted with {chosen_emoji} to message.")
                                 except Exception as e:
                                     print(f"Could not react to message: {e}")
 
                     if reply_text:
-                        scraper.send_message(thread_id, reply_text, reply_to_message=command_msg)
+                        scraper.send_message(
+                            thread_id, reply_text, reply_to_message=command_msg)
                     print("💤 Resuming background watch loop...")
 
             # Reset error counter on successful cycle
@@ -456,8 +532,9 @@ def main():
             consecutive_errors += 1
             # Exponential Backoff Formula: 5s, 10s, 20s, 40s...
             wait_time = 5 * (2 ** (consecutive_errors - 1))
-            
-            print(f"\nPolling Warning: {e} - backing off for {wait_time} seconds... ({consecutive_errors}/5)")
+
+            print(
+                f"\nPolling Warning: {e} - backing off for {wait_time} seconds... ({consecutive_errors}/5)")
 
             if consecutive_errors >= 5:
                 stop_time = datetime.now().strftime("%I:%M:%S %p on %d/%m/%Y")
@@ -473,6 +550,7 @@ def main():
 
         # Human-like randomized polling delay (4.0s - 7.5s)
         time.sleep(random.uniform(4.0, 7.5))
+
 
 if __name__ == "__main__":
     main()
