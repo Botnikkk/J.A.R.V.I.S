@@ -190,7 +190,7 @@ def build_qna_text(full_messages, user_mapping):
         return "⚠️ Not enough valid questions/answers to generate a Q&A."
     return format_qna(qna_msgs, user_mapping)
 
-def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=2, wake_hour=8):
+def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
     now = datetime.now()
     if sleep_start_hour <= now.hour < wake_hour:
         wake_time = now.replace(hour=wake_hour, minute=0, second=0, microsecond=0)
@@ -291,7 +291,7 @@ def main():
     while True:
         try:
             # 1. Check Circadian Sleep Schedule (2 AM - 8 AM)
-            handle_circadian_sleep(scraper, thread_id, sleep_start_hour=2, wake_hour=8)
+            handle_circadian_sleep(scraper, thread_id)
 
             # 2. Random Feed Scroll Simulation
             simulate_feed_scroll(scraper, thread_id)
