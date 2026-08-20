@@ -233,7 +233,7 @@ def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
 
 def simulate_distraction(scraper, thread_id):
     # 1-in-100 chance to get distracted
-    if random.randint(1, 100) == 1:
+    if random.randint(1, 200) == 1:
         action = random.choice(["scroll", "explore"])
 
         if action == "scroll":
