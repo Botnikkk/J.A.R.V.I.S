@@ -6,7 +6,7 @@ import random
 from collections import defaultdict
 from dotenv import load_dotenv
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from features.smalltalk import get_smalltalk_reply
 from features.echo_chamber import get_or_build_echo_chamber
 from utils.logger import log_jarvis_interaction
@@ -190,15 +190,58 @@ def build_qna_text(full_messages, user_mapping):
         return "⚠️ Not enough valid questions/answers to generate a Q&A."
     return format_qna(qna_msgs, user_mapping)
 
+def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=2, wake_hour=8):
+    now = datetime.now()
+    if sleep_start_hour <= now.hour < wake_hour:
+        wake_time = now.replace(hour=wake_hour, minute=0, second=0, microsecond=0)
+        sleep_seconds = (wake_time - now).total_seconds()
+        
+        if sleep_seconds > 0:
+            formatted_wake = wake_time.strftime("%I:%M %p")
+            sleep_msg = f"😴 J.A.R.V.I.S is sleeping to maintain human hours. Offline until {formatted_wake}."
+            print(f"\n{sleep_msg}")
+            try:
+                scraper.send_message(thread_id, sleep_msg)
+            except Exception:
+                pass
+            
+            time.sleep(sleep_seconds)
+            
+            wake_msg = "🌅 J.A.R.V.I.S awake and back online."
+            print(f"\n{wake_msg}")
+            try:
+                scraper.send_message(thread_id, wake_msg)
+            except Exception:
+                pass
+
+def simulate_feed_scroll(scraper, thread_id):
+    # scrolls every ~5min
+    if random.randint(1, 50) == 1:
+        scroll_seconds = random.randint(30, 90)
+        scroll_msg = f"📱 Scrolling the feed for {scroll_seconds}s to avoid bot detection. BRB."
+        print(f"\n{scroll_msg}")
+        
+        try:
+            scraper.send_message(thread_id, scroll_msg)
+            scraper.cl.timeline_feed()
+        except Exception as e:
+            print(f"Scroll simulation error: {e}")
+            
+        time.sleep(scroll_seconds)
+        
+        try:
+            scraper.send_message(thread_id, "👀 Back from Doom scrolling.")
+        except Exception:
+            pass
+
 def main():
     load_dotenv()
 
     TARGET_GC_NAME = os.getenv("TARGET_GC_NAME")
     TIMEOUT_MINUTES = int(os.getenv("TIMEOUT_MINUTES", 20))
-    POLL_FETCH_SIZE = int(os.getenv("POLL_FETCH_SIZE", 5))
-    CATCHUP_LIMIT = int(os.getenv("CATCHUP_LIMIT", 5000))
+    POLL_FETCH_SIZE = int(os.getenv("POLL_FETCH_SIZE", 2))
+    CATCHUP_LIMIT = int(os.getenv("CATCHUP_LIMIT", 100))
     OWNER_USER_ID = os.getenv("OWNER_USER_ID", "").strip() or None
-    COMMAND_COOLDOWN_SECONDS = float(os.getenv("COMMAND_COOLDOWN_SECONDS", 1.5))
     TIMEZONE_OFFSET_HOURS = int(os.getenv("TIMEZONE_OFFSET_HOURS", 5))
     ECHO_MAX_REPLY_GAP_SECONDS = float(os.getenv("ECHO_MAX_REPLY_GAP_SECONDS", 300))
 
@@ -239,14 +282,21 @@ def main():
     print("🤖 JARVIS — INSTAGRAM GC BOT ACTIVE 🤖")
     print("="*50)
     print(f"Target Group Chat: '{TARGET_GC_NAME}'")
-    print("Polling every 1.5 seconds...")
+    print("Polling active...")
     scraper.send_message(thread_id, "🤖 J.A.R.V.I.S online.")
 
     last_processed_message_id = None
-    last_command_time = 0.0
+    consecutive_errors = 0
 
     while True:
         try:
+            # 1. Check Circadian Sleep Schedule (2 AM - 8 AM)
+            handle_circadian_sleep(scraper, thread_id, sleep_start_hour=2, wake_hour=8)
+
+            # 2. Random Feed Scroll Simulation
+            simulate_feed_scroll(scraper, thread_id)
+
+            # 3. Poll Group Chat Messages
             messages, user_mapping, thread_id = scraper.get_group_chat_data(
                 TARGET_GC_NAME, limit=POLL_FETCH_SIZE, ignored_ids=IGNORED_IDS
             )
@@ -291,89 +341,99 @@ def main():
                     last_processed_message_id = latest_id
 
                 if command_msg:
-                    now = time.time()
-                    time_since_last = now - last_command_time
+                    print(f"\nCommand Triggered: '{command_type}' by {user_mapping.get(str(command_msg.user_id))}")
 
-                    if time_since_last < COMMAND_COOLDOWN_SECONDS:
-                        pass
-                    else:
-                        last_command_time = now
-                        print(f"\nCommand Triggered: '{command_type}' by {user_mapping.get(str(command_msg.user_id))}")
+                    full_messages = store.load_all(exclude_user_id=bot_user_id)
 
-                        full_messages = store.load_all(exclude_user_id=bot_user_id)
-
-                        if command_type == "analytics":
-                            export_messages_to_files(full_messages, user_mapping)
-                            reply_text = build_analytics_text(full_messages, user_mapping, TIMEOUT_MINUTES)
-                        elif command_type == "vs":
-                            reply_text = build_vs_text(full_messages, user_mapping, command_msg.text)
-                        elif command_type == "roast":
-                            reply_text = build_roast_text(full_messages, user_mapping, command_msg.text, OWNER_USER_ID, timezone_offset_hours=TIMEZONE_OFFSET_HOURS)
-                        elif command_type == "random":
-                            reply_text = build_random_text(full_messages, user_mapping)
-                        elif command_type == "convo":
-                            reply_text = build_convo_text(full_messages, user_mapping)
-                        elif command_type == "qna":
-                            reply_text = build_qna_text(full_messages, user_mapping)
-                        elif command_type == "whosaidit":
-                            analyzerObj = ChatAnalyzer(full_messages)
-                            reply_text = trivia.start_game(analyzerObj, user_mapping)
-                            if not reply_text:
-                                reply_text = "⚠️ Couldn't find a quote from a registered member in the database. Try again."
-                        elif command_type == "answer":
-                            reply_text = trivia.get_answer()
-                        elif command_type == "update":
-                            scraper.send_message(thread_id, "🔄 Pulling latest code from GitHub and restarting...")
-                            try:
-                                subprocess.run(["git", "pull"], check=True)
-                                os.execv(sys.executable, ['python3'] + sys.argv)
-                            except Exception as e:
-                                scraper.send_message(thread_id, f"⚠️ Update failed: {e}")
-                                reply_text = None
-                        elif command_type == "chance":
-                            reply_text = "Maa chuda mood nahi hai"
-                        elif command_type == "echo":
-                            username = user_mapping.get(str(command_msg.user_id), "Unknown")
-                            prompt = command_msg.text
-                            clean_prompt = " ".join([tok for tok in prompt.split() if tok.lower().strip(",.!?:;") != "jarvis"])
-                            
-                            smalltalk_reply = get_smalltalk_reply(clean_prompt)
-                            if smalltalk_reply:
-                                reply_text = smalltalk_reply
-                                print(f"Smalltalk: matched -> \"{reply_text}\"")
-                                log_jarvis_interaction(username, clean_prompt, "SMALLTALK", reply_text)
+                    if command_type == "analytics":
+                        export_messages_to_files(full_messages, user_mapping)
+                        reply_text = build_analytics_text(full_messages, user_mapping, TIMEOUT_MINUTES)
+                    elif command_type == "vs":
+                        reply_text = build_vs_text(full_messages, user_mapping, command_msg.text)
+                    elif command_type == "roast":
+                        reply_text = build_roast_text(full_messages, user_mapping, command_msg.text, OWNER_USER_ID, timezone_offset_hours=TIMEZONE_OFFSET_HOURS)
+                    elif command_type == "random":
+                        reply_text = build_random_text(full_messages, user_mapping)
+                    elif command_type == "convo":
+                        reply_text = build_convo_text(full_messages, user_mapping)
+                    elif command_type == "qna":
+                        reply_text = build_qna_text(full_messages, user_mapping)
+                    elif command_type == "whosaidit":
+                        analyzerObj = ChatAnalyzer(full_messages)
+                        reply_text = trivia.start_game(analyzerObj, user_mapping)
+                        if not reply_text:
+                            reply_text = "⚠️ Couldn't find a quote from a registered member in the database. Try again."
+                    elif command_type == "answer":
+                        reply_text = trivia.get_answer()
+                    elif command_type == "update":
+                        scraper.send_message(thread_id, "🔄 Pulling latest code from GitHub and restarting...")
+                        try:
+                            subprocess.run(["git", "pull"], check=True)
+                            os.execv(sys.executable, ['python3'] + sys.argv)
+                        except Exception as e:
+                            scraper.send_message(thread_id, f"⚠️ Update failed: {e}")
+                            reply_text = None
+                    elif command_type == "chance":
+                        reply_text = "Maa chuda mood nahi hai"
+                    elif command_type == "echo":
+                        username = user_mapping.get(str(command_msg.user_id), "Unknown")
+                        prompt = command_msg.text
+                        clean_prompt = " ".join([tok for tok in prompt.split() if tok.lower().strip(",.!?:;") != "jarvis"])
+                        
+                        smalltalk_reply = get_smalltalk_reply(clean_prompt)
+                        if smalltalk_reply:
+                            reply_text = smalltalk_reply
+                            print(f"Smalltalk: matched -> \"{reply_text}\"")
+                            log_jarvis_interaction(username, clean_prompt, "SMALLTALK", reply_text)
+                        else:
+                            chamber = get_or_build_echo_chamber(full_messages)
+                            match = chamber.find_echo(
+                                clean_prompt,
+                                datetime.now(timezone.utc),
+                                max_reply_gap_seconds=ECHO_MAX_REPLY_GAP_SECONDS,
+                            )
+                            if match:
+                                reply_text = match["reply_text"]
+                                print(f"Echo Chamber: MATCH FOUND (score={match['score']}) — source: \"{match['matched_source_text'][:60]}\" -> reply: \"{reply_text[:60]}\"")
+                                log_jarvis_interaction(username, clean_prompt, "ECHO", reply_text)
                             else:
-                                chamber = get_or_build_echo_chamber(full_messages)
-                                match = chamber.find_echo(
-                                    clean_prompt,
-                                    datetime.now(timezone.utc),
-                                    max_reply_gap_seconds=ECHO_MAX_REPLY_GAP_SECONDS,
-                                )
-                                if match:
-                                    reply_text = match["reply_text"]
-                                    print(f"Echo Chamber: MATCH FOUND (score={match['score']}) — source: \"{match['matched_source_text'][:60]}\" -> reply: \"{reply_text[:60]}\"")
-                                    log_jarvis_interaction(username, clean_prompt, "ECHO", reply_text)
-                                else:
-                                    reply_text = None
-                                    print(f"Echo Chamber: NO MATCH FOUND for \"{clean_prompt[:60]}\" — reacting instead.")
-                                    log_jarvis_interaction(username, clean_prompt, "GHOSTED")
-                                    
-                                    try:
-                                        no_reply_emojis = ["👀", "🤷", "🤔", "💀", "😶", "❓", "👍🏻", "👅"]
-                                        chosen_emoji = random.choice(no_reply_emojis)
-                                        scraper.cl.direct_send_reaction(thread_id, command_msg.id, chosen_emoji)
-                                        print(f"Reacted with {chosen_emoji} to message.")
-                                    except Exception as e:
-                                        print(f"Could not react to message: {e}")
+                                reply_text = None
+                                print(f"Echo Chamber: NO MATCH FOUND for \"{clean_prompt[:60]}\" — reacting instead.")
+                                log_jarvis_interaction(username, clean_prompt, "GHOSTED")
+                                
+                                try:
+                                    no_reply_emojis = ["👀", "🤷", "🤔", "💀", "😶", "❓", "👍🏻", "👅"]
+                                    chosen_emoji = random.choice(no_reply_emojis)
+                                    scraper.cl.direct_send_reaction(thread_id, command_msg.id, chosen_emoji)
+                                    print(f"Reacted with {chosen_emoji} to message.")
+                                except Exception as e:
+                                    print(f"Could not react to message: {e}")
 
-                        if reply_text:
-                            scraper.send_message(thread_id, reply_text, reply_to_message=command_msg)
-                        print("💤 Resuming background watch loop...")
+                    if reply_text:
+                        scraper.send_message(thread_id, reply_text, reply_to_message=command_msg)
+                    print("💤 Resuming background watch loop...")
+
+            # Reset error counter on successful cycle
+            consecutive_errors = 0
 
         except Exception as e:
-            print(f"\nPolling Warning: {e} - retrying in 3 seconds...")
+            consecutive_errors += 1
+            print(f"\nPolling Warning: {e} - retrying in 5 seconds... ({consecutive_errors}/10)")
 
-        time.sleep(1.5)
+            if consecutive_errors >= 10:
+                stop_time = datetime.now().strftime("%I:%M:%S %p on %d/%m/%Y")
+                print("\n" + "🚨" * 20)
+                print(" AUTO-KILL SWITCH ENGAGED ")
+                print(" 10 consecutive API/Network errors encountered.")
+                print(f" Bot safely stopped at: {stop_time}")
+                print("🚨" * 20 + "\n")
+                sys.exit(1)
+
+            time.sleep(5)
+            continue
+
+        # Human-like randomized polling delay (4.0s - 7.5s)
+        time.sleep(random.uniform(4.0, 7.5))
 
 if __name__ == "__main__":
     main()
