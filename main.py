@@ -232,7 +232,7 @@ def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
 
 
 def simulate_distraction(scraper, thread_id):
-    # 1-in-100 chance to get distracted
+    # 1-in-200 chance to get distracted
     if random.randint(1, 200) == 1:
         action = random.choice(["scroll", "explore"])
 
@@ -323,6 +323,11 @@ def simulate_distraction(scraper, thread_id):
 def main():
     load_dotenv()
 
+    # Load Authentication credentials
+    IG_USERNAME = os.getenv("IG_USERNAME")
+    IG_PASSWORD = os.getenv("IG_PASSWORD")
+    SETTINGS_FILE = "settings.json"
+
     TARGET_GC_NAME = os.getenv("TARGET_GC_NAME")
     TIMEOUT_MINUTES = int(os.getenv("TIMEOUT_MINUTES", 20))
     OWNER_USER_ID = os.getenv("OWNER_USER_ID", "").strip() or None
@@ -336,17 +341,32 @@ def main():
     if not OWNER_USER_ID:
         print("⚠️ Warning: OWNER_USER_ID is not set — no one will be prioritized.")
 
+    if not IG_USERNAME or not IG_PASSWORD:
+        print("❌ Fatal Error: IG_USERNAME or IG_PASSWORD not found in .env file!")
+        return
+
     scraper = InstagramScraper()
     store = MessageStore()
     trivia = TriviaManager()
 
+    # --- THE SELF-HEALING SESSION BLOCK ---
     try:
-        print("Loading trusted session settings...")
-        scraper.cl.load_settings("settings.json")
-        print("Disguise loaded successfully.")
+        if os.path.exists(SETTINGS_FILE):
+            print("📁 Found existing session. Loading settings...")
+            scraper.cl.load_settings(SETTINGS_FILE)
+            # Logs in with cached cookies; only uses user/pass if cookies expired
+            scraper.cl.login(IG_USERNAME, IG_PASSWORD)
+            print("✅ Session validated successfully.")
+        else:
+            print("⚠️ No session file found. Logging in and generating new session...")
+            scraper.cl.login(IG_USERNAME, IG_PASSWORD)
+            scraper.cl.dump_settings(SETTINGS_FILE)
+            print("💾 New session generated and saved to settings.json.")
     except Exception as e:
-        print(f"Login/Settings Error: {e}")
+        print(f"❌ Fatal Login Error: {e}")
         return
+    # ----------------------------------------
+
     bot_user_id = str(scraper.cl.user_id)
     passive = PassiveBehaviors(
         bot_user_id=bot_user_id, ignored_ids=IGNORED_IDS)
