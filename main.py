@@ -215,9 +215,8 @@ def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
                 pass
 
 def simulate_distraction(scraper, thread_id):
-    # 1-in-100 chance to get distracted
+    # 1-in-50 chance to get distracted
     if random.randint(1, 50) == 1:
-        # Randomly choose between timeline feed or Explore page (zero followers required)
         action = random.choice(["scroll", "explore"])
         
         if action == "scroll":
@@ -237,16 +236,44 @@ def simulate_distraction(scraper, thread_id):
                 
         elif action == "explore":
             explore_seconds = random.randint(15, 60)
-            explore_msg = f"🧠 Brain rotting on the Explore page for {explore_seconds}s so zuck doesn't bite my aah. BRB."
+            explore_msg = f"🧠 Brain rotting on the Explore page for {explore_seconds}s. BRB."
             print(f"\n{explore_msg}")
+            
+            medias = []
             try:
                 scraper.send_message(thread_id, explore_msg)
-                scraper.cl.explore()  # Fetches the Explore grid (no following required)
+                medias = scraper.cl.explore()  
             except Exception as e:
                 print(f"Explore simulation error: {e}")
+                
             time.sleep(explore_seconds)
+
+            if medias and random.randint(1, 4) == 1:
+                try:
+                    # PUT YOUR FRIENDS' NUMERICAL INSTAGRAM IDS HERE
+                    REEL_BUDDIES = ['22625167653', '58236872636']
+                    
+                    # Pick a random reel from the explore page
+                    random_media = random.choice(medias)
+                    
+                    captions = ["real", "literally me", "bruh", "us", "chat is this real?"]
+                    chosen_caption = random.choice(captions)
+                    
+                    # 50/50 chance: Send to a random friend DM -OR- drop it in the GC
+                    if REEL_BUDDIES and random.choice([True, False]):
+                        target_user = int(random.choice(REEL_BUDDIES))
+                        scraper.cl.direct_media_share(random_media.id, user_ids=[target_user])
+                        print(f"📤 Sent a random reel to user {target_user}")
+                    else:
+                        scraper.cl.direct_media_share(random_media.id, thread_ids=[int(thread_id)])
+                        scraper.send_message(thread_id, chosen_caption)
+                        print("📤 Dropped a random reel in the GC.")
+                        
+                except Exception as e:
+                    print(f"Failed to share reel: {e}")
+
             try:
-                scraper.send_message(thread_id, "👀 Back from the Doom scrolling.")
+                scraper.send_message(thread_id, "👀 Back from the Explore page.")
             except Exception:
                 pass
 
@@ -259,7 +286,7 @@ def main():
     TIMEZONE_OFFSET_HOURS = int(os.getenv("TIMEZONE_OFFSET_HOURS", 5))
     ECHO_MAX_REPLY_GAP_SECONDS = float(os.getenv("ECHO_MAX_REPLY_GAP_SECONDS", 300))
 
-    IGNORED_IDS = {"37797976551", "64528677628"}  # Meta AI + old bot
+    IGNORED_IDS = {"37797976551", "64528677628", "34612692420"}  # Meta AI + old bot
 
     if not OWNER_USER_ID:
         print("⚠️ Warning: OWNER_USER_ID is not set — no one will be prioritized.")

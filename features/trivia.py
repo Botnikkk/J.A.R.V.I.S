@@ -19,7 +19,7 @@ class TriviaManager:
             "22625167653": [ "faisal", "fesu", "fesl"],
             "8143648482": [ "mubih", "mubi"],
             "48043757344": ["safwa", "safu"],
-            "9243900649": ["riza", "du dah"],
+            "9243900649": ["riza", "du dah", "rija"],
             "54994111283": ["shreyas"],
             "55553138760": ["deba", "debayudh"],
             "50710625258": ["ritin", "ritu"],
