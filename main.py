@@ -96,6 +96,8 @@ def detect_command(text, sender_id, owner_user_id):
     if "update" in tokens and str(sender_id) == str(owner_user_id):
         return "update"
     if "analytics" in tokens:
+        if "all" in tokens:
+            return "analytics_all"
         return "analytics"
     if "vs" in tokens:
         return "vs"
@@ -134,13 +136,13 @@ def pick_command_to_run(new_batch, owner_user_id):
     return candidates[0]
 
 
-def build_analytics_text(full_messages, user_mapping, timeout_minutes):
+def build_analytics_text(full_messages, user_mapping, timeout_minutes, scope_label="last 5,000"):
     analyzer = ChatAnalyzer(full_messages)
     most_active = analyzer.get_most_active()
     most_ignored = analyzer.get_most_ignored(timeout_minutes=timeout_minutes)
 
     text = "📊 INSTAGRAM GC ANALYTICS 📊\n"
-    text += f"Analyzed {len(full_messages)} logged messages.\n\n"
+    text += f"Analyzed {len(full_messages)} logged messages ({scope_label}).\n\n"
 
     text += "🏆 MOST ACTIVE:\n"
     for user_id, count in most_active[:5]:
@@ -224,7 +226,7 @@ def build_qna_text(full_messages, user_mapping):
     return format_qna(qna_msgs, user_mapping)
 
 
-def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=4, wake_hour=9):
+def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=3, wake_hour=9):
     now = datetime.now()
     if sleep_start_hour <= now.hour < wake_hour:
         wake_time = now.replace(hour=wake_hour, minute=0,
@@ -363,6 +365,27 @@ def is_auth_error(exc):
     ])
 
 
+ANALYTICS_DEFAULT_LIMIT = 5000
+
+
+def scope_messages_for_analytics(full_messages, command_type):
+    """Returns (messages_to_analyze, scope_label) for the analytics command.
+    'analytics' -> most recent ANALYTICS_DEFAULT_LIMIT messages only.
+    'analytics_all' -> every logged message, no cap.
+    Sorts by timestamp first so "most recent" is accurate regardless of the
+    on-disk write/sort order at the moment this runs.
+    """
+    if command_type == "analytics_all":
+        return full_messages, f"all {len(full_messages)}"
+
+    if len(full_messages) <= ANALYTICS_DEFAULT_LIMIT:
+        return full_messages, f"all {len(full_messages)}"
+
+    sorted_msgs = sorted(full_messages, key=lambda m: m.timestamp)
+    scoped = sorted_msgs[-ANALYTICS_DEFAULT_LIMIT:]
+    return scoped, f"last {ANALYTICS_DEFAULT_LIMIT:,}"
+
+
 def main():
     load_dotenv()
 
@@ -488,10 +511,13 @@ def main():
 
                     full_messages = store.load_all(exclude_user_id=bot_user_id)
 
-                    if command_type == "analytics":
-                        export_messages_to_files(full_messages, user_mapping)
+                    if command_type in ("analytics", "analytics_all"):
+                        scoped_messages, scope_label = scope_messages_for_analytics(
+                            full_messages, command_type)
+                        export_messages_to_files(scoped_messages, user_mapping)
                         reply_text = build_analytics_text(
-                            full_messages, user_mapping, TIMEOUT_MINUTES)
+                            scoped_messages, user_mapping, TIMEOUT_MINUTES,
+                            scope_label=scope_label)
                     elif command_type == "vs":
                         reply_text = build_vs_text(
                             full_messages, user_mapping, command_msg.text)

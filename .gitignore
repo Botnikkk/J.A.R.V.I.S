@@ -1,5 +1,7 @@
 message_log.jsonl
 settings.json
+read_log.py
+catchup.py
 .env
 messages/
 venv/
