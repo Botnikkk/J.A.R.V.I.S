@@ -8,3 +8,4 @@ venv/
 __pycache__/
 *.pyc
 regenerate_session.py
+jarvis_interactions.txt

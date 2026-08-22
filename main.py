@@ -23,6 +23,8 @@ from features.fun_commands import (
     format_qna,
 )
 
+from instagrapi import Client
+
 try:
     from instagrapi.exceptions import (
         LoginRequired,
@@ -41,6 +43,11 @@ try:
 except ImportError:
     # Fall back to string-matching if instagrapi's exception module shape changes
     AUTH_EXCEPTIONS = ()
+
+try:
+    from instagrapi.exceptions import TwoFactorRequired as _TwoFactorRequired
+except ImportError:
+    _TwoFactorRequired = None
 
 
 def export_messages_to_files(messages, user_mapping, folder_name="messages"):
@@ -250,35 +257,74 @@ def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=3, wake_hour=9):
             except Exception:
                 pass
 
-def perform_login(scraper, settings_file, username, password):
+
+def perform_login(scraper, settings_file, username, password, session_id=None):
     """
-    Attempts to authenticate the scraper, preferring a cached session.
-    Returns True on success, False on failure. Never raises.
+    Tiered, self-healing authentication. Tries, in order:
+      1. Cached settings.json (device fingerprint + session cookies) — cheapest,
+         least likely to trigger anti-bot flags since the device looks consistent.
+      2. SESSION_ID (from .env) — bootstraps a fresh session onto a fresh
+         device fingerprint, then saves it as the new settings.json.
+      3. Full username/password credential login — last resort, since this is
+         the most likely to trip a checkpoint/challenge if done repeatedly.
+
+    Never raises. Returns True on success, False if every strategy failed
+    (e.g. two-factor/challenge required — needs a human, so we stop there
+    rather than looping forever).
+
+    Note: this deliberately does NOT make an extra API call (e.g.
+    get_timeline_feed) just to validate the session — that's one more
+    request than the bot strictly needs. If a session is actually dead,
+    it'll surface naturally on the first real call in the polling loop,
+    where is_auth_error() catches it and triggers a re-login through this
+    same tiered fallback.
     """
-    try:
-        if os.path.exists(settings_file):
-            print("📁 Found existing session. Loading settings...")
+
+    # --- Attempt 1: cached settings.json ---
+    if os.path.exists(settings_file):
+        try:
+            print("📁 Found existing session. Loading settings.json...")
             scraper.cl.load_settings(settings_file)
             scraper.cl.login(username, password)
-            print("✅ Session validated successfully.")
-        else:
-            print("⚠️ No session file found. Logging in and generating new session...")
-            scraper.cl.login(username, password)
-            scraper.cl.dump_settings(settings_file)
-            print("💾 New session generated and saved to settings.json.")
-        return True
-    except Exception as e:
-        print(f"❌ Login attempt failed: {e}")
-        # If the cached session itself is the problem (corrupted/blacklisted),
-        # drop it so the next attempt does a clean credential login instead
-        # of retrying the same bad cookies forever.
-        if os.path.exists(settings_file):
+            print("✅ Loaded session from settings.json.")
+            return True
+        except Exception as e:
+            print(f"⚠️ settings.json session invalid ({e}).")
             try:
                 os.remove(settings_file)
-                print(
-                    "🗑️ Removed stale session file; next attempt will do a fresh login.")
+                print("🗑️ Removed stale settings.json.")
             except OSError:
                 pass
+            # Reset to a clean client so the failed session doesn't leak
+            # half-applied cookies/device state into the next attempt.
+            scraper.cl = Client()
+
+    # --- Attempt 2: SESSION_ID bootstrap ---
+    if session_id:
+        try:
+            print("🔑 settings.json unavailable — attempting login via SESSION_ID...")
+            scraper.cl.login_by_sessionid(session_id)
+            scraper.cl.dump_settings(settings_file)
+            print("💾 New session generated from SESSION_ID and saved to settings.json.")
+            return True
+        except Exception as e:
+            print(f"⚠️ SESSION_ID login failed ({e}).")
+            scraper.cl = Client()
+    else:
+        print("ℹ️ No SESSION_ID set in .env — skipping session-id login attempt.")
+
+    # --- Attempt 3: full username/password login ---
+    try:
+        print("🔐 Falling back to full username/password login...")
+        scraper.cl.login(username, password)
+        scraper.cl.dump_settings(settings_file)
+        print("💾 New session generated and saved to settings.json.")
+        return True
+    except Exception as e:
+        if _TwoFactorRequired and isinstance(e, _TwoFactorRequired):
+            print(f"❌ Two-factor authentication requested — needs a human to complete: {e}")
+        else:
+            print(f"❌ Username/password login failed: {e}")
         return False
 
 
@@ -321,6 +367,7 @@ def main():
     # Load Authentication credentials
     IG_USERNAME = os.getenv("IG_USERNAME")
     IG_PASSWORD = os.getenv("IG_PASSWORD")
+    SESSION_ID = os.getenv("SESSION_ID")
     SETTINGS_FILE = "settings.json"
 
     TARGET_GC_NAME = os.getenv("TARGET_GC_NAME")
@@ -340,13 +387,16 @@ def main():
         print("❌ Fatal Error: IG_USERNAME or IG_PASSWORD not found in .env file!")
         return
 
+    if not SESSION_ID:
+        print("ℹ️ No SESSION_ID in .env — bot will rely on settings.json / username+password only.")
+
     scraper = InstagramScraper()
     store = MessageStore()
     trivia = TriviaManager()
 
     # --- THE SELF-HEALING SESSION BLOCK ---
-    if not perform_login(scraper, SETTINGS_FILE, IG_USERNAME, IG_PASSWORD):
-        print("❌ Fatal Login Error: could not authenticate on startup.")
+    if not perform_login(scraper, SETTINGS_FILE, IG_USERNAME, IG_PASSWORD, session_id=SESSION_ID):
+        print("❌ Fatal Login Error: could not authenticate on startup via any method (settings.json, SESSION_ID, or username/password).")
         return
     # ----------------------------------------
 
@@ -535,7 +585,7 @@ def main():
 
             if is_auth_error(e):
                 print(f"\n🔑 Session invalidated ({e}). Attempting re-login...")
-                if perform_login(scraper, SETTINGS_FILE, IG_USERNAME, IG_PASSWORD):
+                if perform_login(scraper, SETTINGS_FILE, IG_USERNAME, IG_PASSWORD, session_id=SESSION_ID):
                     print("✅ Re-login successful. Resuming polling.")
                     consecutive_errors = 0
                     time.sleep(2)
@@ -563,14 +613,14 @@ def main():
 
         # --- ADAPTIVE POLLING LOGIC ---
         time_since_active = (datetime.now() - last_active_time).total_seconds()
-        
+
         if time_since_active < IDLE_TIMEOUT_SECONDS:
             # The chat is active (4.0 to 7.5 seconds)
             wait_time = random.uniform(4.0, 7.5)
         else:
             # The chat is dead (45 to 60 seconds)
             wait_time = random.uniform(45.0, 60.0)
-            
+
         time.sleep(wait_time)
 
 
