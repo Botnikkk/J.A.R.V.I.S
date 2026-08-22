@@ -4,7 +4,6 @@
 
 This repository contains the source code for **J.A.R.V.I.S**, an autonomous, memory-driven Instagram Group Chat companion. Built in Python using `instagrapi`, it combines local chat analytics, interactive mini-games, dynamic roasts, and a self-improving echo chamber conversational engine—all while simulating human behavior to evade strict API detection.
 
-**Bot ID :** [ J.A.R.V.I.S 🔗](https://www.instagram.com/jarvis.watcher)
 
 ---
 
