@@ -14,7 +14,6 @@ from core.scraper import InstagramScraper
 from core.analyzer import ChatAnalyzer
 from core.message_store import MessageStore
 from features.trivia import TriviaManager
-from features.passive_behaviors import PassiveBehaviors
 from features.fun_commands import (
     extract_user_ids_from_command,
     format_vs,
@@ -251,76 +250,6 @@ def handle_circadian_sleep(scraper, thread_id, sleep_start_hour=3, wake_hour=9):
             except Exception:
                 pass
 
-
-def simulate_distraction(scraper, thread_id):
-    explore_seconds = random.randint(15, 60)
-    explore_msg = f"🧠 Brain rotting on meme pages for {explore_seconds}s. BRB."
-    print(f"\n{explore_msg}")
-
-    medias = []
-    try:
-        scraper.send_message(thread_id, explore_msg)
-
-        # CACHED NUMERICAL IDs OF MEME PAGES
-        meme_page_ids = [
-            1491142059,
-            1423380971,
-            2713831542,
-            2136831433,
-            5405755957,
-            2374691999,
-            1431724849,
-            1419706373,
-            6175715373,
-            319018352,
-        ]
-        target_page_id = random.choice(meme_page_ids)
-
-        # Fetch directly using the numerical ID (lowered amount to 5 for safety)
-        medias = scraper.cl.user_medias(target_page_id, amount=5)
-
-    except Exception as e:
-        print(f"Meme page simulation error: {e}")
-
-    # Sleep to simulate actually watching the content
-    time.sleep(explore_seconds)
-
-    # ---------------------------------------------------------
-    # 25% chance to share a meme after watching
-    # ---------------------------------------------------------
-    if medias and random.randint(1, 4) == 1:
-        try:
-            # PUT YOUR FRIENDS' NUMERICAL INSTAGRAM IDS HERE
-            REEL_BUDDIES = [56838775794, 22625167653,
-                            58236872636]  # e.g., [11223344, 55667788]
-
-            random_media = random.choice(medias)
-            captions = ["real", "literally me",
-                        "literally you", "us", "chat is this real?"]
-            chosen_caption = random.choice(captions)
-
-            # 50/50 chance: Send to a random friend DM -OR- drop it in the GC
-            if REEL_BUDDIES and random.choice([True, False]):
-                target_user = int(random.choice(REEL_BUDDIES))
-                scraper.cl.direct_media_share(
-                    random_media.id, user_ids=[target_user])
-                print(f"📤 Sent a random meme to user {target_user}")
-            else:
-                scraper.cl.direct_media_share(
-                    random_media.id, thread_ids=[int(thread_id)])
-                time.sleep(2)
-                scraper.send_message(thread_id, chosen_caption)
-                print("📤 Dropped a random meme in the GC.")
-
-        except Exception as e:
-            print(f"Failed to share reel: {e}")
-
-    try:
-        scraper.send_message(thread_id, "👀 Back from the brain rot.")
-    except Exception:
-        pass
-
-
 def perform_login(scraper, settings_file, username, password):
     """
     Attempts to authenticate the scraper, preferring a cached session.
@@ -422,8 +351,6 @@ def main():
     # ----------------------------------------
 
     bot_user_id = str(scraper.cl.user_id)
-    passive = PassiveBehaviors(
-        bot_user_id=bot_user_id, ignored_ids=IGNORED_IDS)
 
     try:
         _, _, thread_id = scraper.get_group_chat_data(
@@ -442,14 +369,14 @@ def main():
     last_processed_message_id = None
     consecutive_errors = 0
 
+    #IDLE out requests if no new messages are detected for a while, to avoid spamming the API
+    last_active_time = datetime.now()
+    IDLE_TIMEOUT_SECONDS = 180
+
     while True:
         try:
             # 1. Check Circadian Sleep Schedule
             handle_circadian_sleep(scraper, thread_id)
-
-            # 2. Distraction Simulation (Scroll Feed OR Explore Page)
-            if random.randint(1, 200) == 1:
-                simulate_distraction(scraper, thread_id)
 
             # 3. Dynamic Fetch Size
             dynamic_fetch_size = random.randint(2, 5)
@@ -468,11 +395,8 @@ def main():
             if messages:
                 new_batch = find_new_messages(
                     messages, last_processed_message_id)
-
-                callouts = passive.check_hypocrite(new_batch, user_mapping)
-                for callout_text in callouts:
-                    scraper.send_message(thread_id, callout_text)
-                    print(f"💀 Hypocrite detected: {callout_text}")
+                if len(new_batch) > 0:
+                    last_active_time = datetime.now()
 
                 if trivia.active_trivia:
                     for msg in new_batch:
@@ -637,8 +561,17 @@ def main():
             time.sleep(wait_time)
             continue
 
-        # Human-like randomized polling delay (4.0s - 7.5s)
-        time.sleep(random.uniform(5.0,  12.0))
+        # --- ADAPTIVE POLLING LOGIC ---
+        time_since_active = (datetime.now() - last_active_time).total_seconds()
+        
+        if time_since_active < IDLE_TIMEOUT_SECONDS:
+            # The chat is active (4.0 to 7.5 seconds)
+            wait_time = random.uniform(4.0, 7.5)
+        else:
+            # The chat is dead (45 to 60 seconds)
+            wait_time = random.uniform(45.0, 60.0)
+            
+        time.sleep(wait_time)
 
 
 if __name__ == "__main__":

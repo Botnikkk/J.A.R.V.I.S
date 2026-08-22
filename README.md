@@ -16,7 +16,7 @@ This localized database powers the bot's core systems:
 * **Conversational AI (Echo Chamber & Smalltalk):** When mentioned, J.A.R.V.I.S scans its logged message database for contextual matches, mirroring the vernacular, inside jokes, and past responses of the group members like a tiny, organic machine learning model.
 * **Interactive Chat Games & Commands:** Runs trivia guessing games ("Who Said It?"), pulls out-of-context quotes (`random`), stitches together past messages into fictional chats (`convo`) and interviews (`qna`), and calculates live group metrics.
 * **Stat-Based Roasting & Comparisons:** Parses message volume and read-receipt response delays to deliver personalized, data-backed roasts and side-by-side head-to-head comparisons (`vs`).
-* **Humanized Evasion Engine:** Maintains a circadian sleep rhythm at night, adjusts polling speeds adaptively based on chat activity, and gets distracted by scrolling meme pages to blend in with real human users.
+* **Humanized Evasion Engine:** Maintains a circadian sleep rhythm at night and adjusts polling speeds adaptively based on chat activity.
 
 ---
 
@@ -42,7 +42,6 @@ This localized database powers the bot's core systems:
 ### 🛡️ Stealth & Anti-Ban Architecture
 * **Circadian Sleep Cycle:** Automatically enters a deep sleep mode during early morning hours (4:00 AM – 9:00 AM) to match authentic human sleeping schedules.
 * **Adaptive Polling:** Automatically scales down polling intervals to 4–7 seconds when the chat is buzzing, and throttles back to 45–60 seconds when idle to conserve requests.
-* **Meme Doomscrolling:** Randomly pauses between polling loops to fetch and explore cached meme pages, with a chance to forward funny reels back into the group chat or DMs.
 * **Self-Healing Sessions:** Automatically validates session cookies, clears stale credentials on auth errors, and regenerates safe device footprints without manual intervention.
 
 ---
@@ -72,4 +71,4 @@ This led to a much bigger idea: what if the bot,  **J.A.R.V.I.S.**, could actual
 
 I developed an **"Echo Chamber" mechanic**. When prompted, J.A.R.V.I.S. searches the database for contextually relevant replies previously sent by real group members. It effectively functions as a small, **organic machine learning model**; as our chat history expands, the bot's vocabulary, humor, and understanding of inside jokes evolve right alongside it.
 
-To navigate Instagram's strict bot-detection algorithms, I programmed J.A.R.V.I.S. with **simulated human behaviors**, such as circadian sleep schedules and periodic meme-scrolling. While the project remains a work in progress and managing platform restrictions is an ongoing challenge, every new logged message helps J.A.R.V.I.S. feel less like a script and more like a genuine member of the group.
+To navigate Instagram's strict bot-detection algorithms, I programmed J.A.R.V.I.S. with a circadian sleep schedule.  While the project remains a work in progress and managing platform restrictions is an ongoing challenge, every new logged message helps J.A.R.V.I.S. feel less like a script and more like a genuine member of the group.
