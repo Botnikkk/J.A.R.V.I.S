@@ -225,11 +225,21 @@ class EchoChamber:
 
     def _drop_weakest_token(self, trigger_tokens):
         """
-        Removes the single least-informative token (lowest IDF) from
-        trigger_tokens, so the words most likely to be distinctive are
-        the ones kept the longest as we relax the search.
+        Removes the single least-informative token from trigger_tokens,
+        so the words most likely to be distinctive are the ones kept
+        the longest as we relax the search.
+
+        Words that never appear anywhere in the message history (out of
+        vocabulary) are dropped first — they contribute zero candidates
+        and only dilute the similarity score. Only once every remaining
+        token is "known" do we fall back to dropping the lowest-IDF
+        (most common/least distinctive) known token.
         """
-        weakest = min(trigger_tokens, key=lambda w: self.idf.get(w, 0.0))
+        unseen = [w for w in trigger_tokens if w not in self.idf]
+        if unseen:
+            weakest = unseen[0]
+        else:
+            weakest = min(trigger_tokens, key=lambda w: self.idf[w])
         remaining = trigger_tokens[:]
         remaining.remove(weakest)
         return remaining
@@ -237,21 +247,27 @@ class EchoChamber:
     def find_echo(self, trigger_text, now_timestamp, max_reply_gap_seconds=300, min_trigger_tokens=1):
         trigger_tokens = _tokenize(trigger_text)
         if len(trigger_tokens) < min_trigger_tokens:
+            print(f"[EchoChamber] '{trigger_text}' -> fewer than {min_trigger_tokens} usable keyword(s), skipping search. Reacting instead.")
             return None
 
         # Progressive fallback: search with the full keyword list, and if
         # nothing matches, drop the weakest (lowest-IDF) keyword and try
         # again, repeating until either a match is found or we run out
         # of keywords entirely.
+        attempt = 1
         while trigger_tokens:
+            print(f"[EchoChamber] attempt {attempt}: matching on keywords {trigger_tokens}")
             result = self._search(trigger_tokens, trigger_text, max_reply_gap_seconds)
             if result is not None:
+                print(f"[EchoChamber] match found on attempt {attempt} with keywords {trigger_tokens}")
                 return result
 
             if len(trigger_tokens) == 1:
                 break
             trigger_tokens = self._drop_weakest_token(trigger_tokens)
+            attempt += 1
 
+        print(f"[EchoChamber] no match found after exhausting all keywords for '{trigger_text}'. Reacting instead.")
         return None
 
 
