@@ -106,122 +106,153 @@ class EchoChamber:
             
         return base_score
 
-    def find_echo(self, trigger_text, now_timestamp, max_reply_gap_seconds=300, min_trigger_tokens=1):
-        trigger_tokens = _tokenize(trigger_text)
-        if len(trigger_tokens) < min_trigger_tokens:
-            return None
-
+    def _search(self, trigger_tokens, trigger_text, max_reply_gap_seconds):
+        """
+        Core matching routine, operating on a fixed set of trigger tokens.
+        Returns a result dict, or None if nothing cleared the bar.
+        """
         trigger_is_question = "?" in trigger_text
         candidate_positions = set()
-        
+
         for w in trigger_tokens:
             candidate_positions |= self.word_index.get(w, set())
-            
+
         if not candidate_positions:
             return None
 
         valid_replies = []
-        
+
         for pos in candidate_positions:
             if pos + 1 >= len(self.messages):
                 continue
-                
+
             original_msg = self.messages[pos]
             reply_msg = self.messages[pos+1]
             original_tokens = self.tokens_by_pos.get(pos, [])
             original_text = getattr(original_msg, "text", "") or ""
-            
+
             # Skips the source if it was a command or addressed to JARVIS
-            if _looks_like_command(original_text): 
+            if _looks_like_command(original_text):
                 continue
-                
-            if str(reply_msg.user_id) == str(original_msg.user_id): 
-                continue 
-            
+
+            if str(reply_msg.user_id) == str(original_msg.user_id):
+                continue
+
             sim_score = self._similarity(trigger_tokens, trigger_text, original_tokens, original_text)
             if sim_score < 0.4:  # Raised base threshold
                 continue
-                
+
             reply_text = getattr(reply_msg, "text", None)
-            if not reply_text: 
+            if not reply_text:
                 continue
-                
+
             # Skips the reply if it was a command or addressed to JARVIS
-            if _looks_like_command(reply_text): 
+            if _looks_like_command(reply_text):
                 continue
 
             # UPGRADE 3: The Cross-Talk Tagging Filter
             if "@" in reply_text and "@" not in trigger_text:
                 continue
-            
+
             low_reply = reply_text.lower()
-            if "http" in low_reply or ".com" in low_reply: 
+            if "http" in low_reply or ".com" in low_reply:
                 continue
-            
+
             reply_word_count = len(reply_text.split())
-            if reply_word_count > 15: 
+            if reply_word_count > 15:
                 continue
-                
+
             if trigger_is_question and "?" in reply_text:
                 sim_score *= 0.5
             elif not trigger_is_question and "?" in reply_text:
                 sim_score *= 1.2
-                
+
             gap = (_ensure_utc(reply_msg.timestamp) - _ensure_utc(original_msg.timestamp)).total_seconds()
-            if gap < 0 or gap > max_reply_gap_seconds: 
+            if gap < 0 or gap > max_reply_gap_seconds:
                 continue
-            
+
             # Massive bonus for rapid-fire replies (proves it wasn't cross-talk)
-            if gap <= 15: 
-                sim_score += 0.5  
+            if gap <= 15:
+                sim_score += 0.5
             elif gap <= 45:
                 sim_score += 0.2
-            
+
             cluster_key = _normalize(reply_text)
-            if not cluster_key: 
+            if not cluster_key:
                 continue
-            
+
             valid_replies.append({
                 "anchor_score": sim_score,
                 "cluster_key": cluster_key,
                 "raw_reply": reply_text,
                 "matched_anchor": original_text
             })
-            
-        if not valid_replies: 
+
+        if not valid_replies:
             return None
-        
+
         clusters = defaultdict(list)
         for r in valid_replies:
             clusters[r["cluster_key"]].append(r)
-            
+
         cluster_scores = []
         for key, replies in clusters.items():
             freq = len(replies)
             avg_anchor_score = sum(r["anchor_score"] for r in replies) / freq
-            
+
             # UPGRADE 4: True Consensus Weighting
             consensus_score = avg_anchor_score + ((freq - 1) * 1.5)
-            
+
             best_reply_obj = max(replies, key=lambda x: x["anchor_score"])
-            
+
             cluster_scores.append({
                 "score": consensus_score,
                 "freq": freq,
                 "reply_text": best_reply_obj["raw_reply"],
                 "matched_source_text": best_reply_obj["matched_anchor"]
             })
-            
+
         cluster_scores.sort(key=lambda x: x["score"], reverse=True)
-        
+
         # UPGRADE 5: The "Ghosting" Rule
         if cluster_scores[0]["score"] < 2.0:
             return None
-        
+
         top_candidates = cluster_scores[:3]
         safe_candidates = [c for c in top_candidates if c["score"] >= 2.0]
-        
+
         return random.choice(safe_candidates)
+
+    def _drop_weakest_token(self, trigger_tokens):
+        """
+        Removes the single least-informative token (lowest IDF) from
+        trigger_tokens, so the words most likely to be distinctive are
+        the ones kept the longest as we relax the search.
+        """
+        weakest = min(trigger_tokens, key=lambda w: self.idf.get(w, 0.0))
+        remaining = trigger_tokens[:]
+        remaining.remove(weakest)
+        return remaining
+
+    def find_echo(self, trigger_text, now_timestamp, max_reply_gap_seconds=300, min_trigger_tokens=1):
+        trigger_tokens = _tokenize(trigger_text)
+        if len(trigger_tokens) < min_trigger_tokens:
+            return None
+
+        # Progressive fallback: search with the full keyword list, and if
+        # nothing matches, drop the weakest (lowest-IDF) keyword and try
+        # again, repeating until either a match is found or we run out
+        # of keywords entirely.
+        while trigger_tokens:
+            result = self._search(trigger_tokens, trigger_text, max_reply_gap_seconds)
+            if result is not None:
+                return result
+
+            if len(trigger_tokens) == 1:
+                break
+            trigger_tokens = self._drop_weakest_token(trigger_tokens)
+
+        return None
 
 
 _cache = {"chamber": None, "count": 0}
