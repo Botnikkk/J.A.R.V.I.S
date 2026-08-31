@@ -123,11 +123,7 @@ class EchoChamber:
         valid_replies = []
 
         for pos in candidate_positions:
-            if pos + 1 >= len(self.messages):
-                continue
-
             original_msg = self.messages[pos]
-            reply_msg = self.messages[pos+1]
             original_tokens = self.tokens_by_pos.get(pos, [])
             original_text = getattr(original_msg, "text", "") or ""
 
@@ -135,7 +131,19 @@ class EchoChamber:
             if _looks_like_command(original_text):
                 continue
 
-            if str(reply_msg.user_id) == str(original_msg.user_id):
+            # Look ahead up to 5 messages to find the first reply from a DIFFERENT user
+            reply_msg = None
+            for offset in range(1, 10):
+                if pos + offset >= len(self.messages):
+                    break
+                candidate_reply = self.messages[pos + offset]
+                
+                # Skip if the candidate reply is just the same user double-texting
+                if str(candidate_reply.user_id) != str(original_msg.user_id):
+                    reply_msg = candidate_reply
+                    break
+            
+            if not reply_msg:
                 continue
 
             sim_score = self._similarity(trigger_tokens, trigger_text, original_tokens, original_text)
