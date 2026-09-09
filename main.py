@@ -1,6 +1,7 @@
 import sys
 import subprocess
 import os
+import re
 import time
 import random
 from collections import defaultdict
@@ -13,7 +14,7 @@ from core.scraper import InstagramScraper
 from core.analyzer import ChatAnalyzer
 from core.message_store import MessageStore
 from features.trivia import TriviaManager
-from features.milestones import get_milestone_rows, format_rows_for_chat
+from features.milestones import get_milestone_rows, get_message_row, format_rows_for_chat
 from features.fun_commands import (
     extract_user_ids_from_command,
     format_vs,
@@ -107,6 +108,8 @@ def detect_command(text, sender_id, owner_user_id):
         return "analytics"
     if "milestones" in tokens:
         return "milestones"
+    if "message" in tokens:
+        return "message_number"
     if "vs" in tokens:
         return "vs"
     if "roast" in tokens:
@@ -205,12 +208,12 @@ def build_roast_text(full_messages, user_mapping, command_text, owner_user_id, t
     return format_roast(name, stats)
 
 
-def build_milestones_text(full_messages, user_mapping):
-    if not full_messages:
-        return "⚠️ No messages logged yet."
-
+def _messages_to_entries(full_messages, user_mapping):
+    """Convert stored message objects into the plain dict shape the
+    features.milestones helpers expect, sorted chronologically so 'message
+    no.N' means the same thing everywhere (milestones, single lookups)."""
     sorted_msgs = sorted(full_messages, key=lambda m: m.timestamp)
-    entries = [
+    return [
         {
             "username": user_mapping.get(str(m.user_id), "Unknown"),
             "text": m.text,
@@ -219,11 +222,36 @@ def build_milestones_text(full_messages, user_mapping):
         for m in sorted_msgs
     ]
 
+
+def build_milestones_text(full_messages, user_mapping):
+    if not full_messages:
+        return "⚠️ No messages logged yet."
+
+    entries = _messages_to_entries(full_messages, user_mapping)
+
     rows = get_milestone_rows(entries)
     if not rows:
         return "🏁 No milestone messages yet."
 
     return format_rows_for_chat(rows, title="🏁 Milestone messages")
+
+
+def build_message_number_text(full_messages, user_mapping, command_text):
+    if not full_messages:
+        return "⚠️ No messages logged yet."
+
+    match = re.search(r"\d+", command_text or "")
+    if not match:
+        return "⚠️ Tell me which message number, e.g. 'jarvis message 67'."
+
+    index = int(match.group())
+    entries = _messages_to_entries(full_messages, user_mapping)
+
+    if index < 1 or index > len(entries):
+        return f"⚠️ No message no.{index} — only {len(entries)} logged."
+
+    row = get_message_row(entries, index)
+    return format_rows_for_chat([row], title=f"📨 Message no.{index}")
 
 
 def build_random_text(full_messages, user_mapping):
@@ -520,6 +548,9 @@ def main():
                     elif command_type == "milestones":
                         reply_text = build_milestones_text(
                             full_messages, user_mapping)
+                    elif command_type == "message_number":
+                        reply_text = build_message_number_text(
+                            full_messages, user_mapping, command_msg.text)
                     elif command_type == "vs":
                         reply_text = build_vs_text(
                             full_messages, user_mapping, command_msg.text)

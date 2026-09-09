@@ -223,6 +223,19 @@ def get_milestone_rows(entries):
     return rows
 
 
+def get_message_row(entries, index):
+    if index < 1 or index > len(entries):
+        return None
+
+    entry = entries[index - 1]
+    username = get_field(entry, "username", "user", "name",
+                          "user_id", default="Unknown")
+    text = get_field(entry, "text", "message", "content", default="")
+    raw_ts = get_field(entry, "timestamp", "time", "date", default=None)
+    pretty_ts = format_timestamp(raw_ts)
+    return (f"Msg no.{index}", username, text, pretty_ts)
+
+
 def main():
     count = 50
     path = "message_log.jsonl"
