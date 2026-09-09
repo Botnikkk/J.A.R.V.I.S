@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 from datetime import datetime, timezone, timedelta
 from features.smalltalk import get_smalltalk_reply
 from features.echo_chamber import get_or_build_echo_chamber
-from utils.logger import log_jarvis_interaction
 from core.scraper import InstagramScraper
 from core.analyzer import ChatAnalyzer
 from core.message_store import MessageStore
@@ -565,8 +564,6 @@ def main():
                         if smalltalk_reply:
                             reply_text = smalltalk_reply
                             print(f"Smalltalk: matched -> \"{reply_text}\"")
-                            log_jarvis_interaction(
-                                username, clean_prompt, "SMALLTALK", reply_text)
                         else:
                             chamber = get_or_build_echo_chamber(full_messages)
                             match = chamber.find_echo(
@@ -578,15 +575,10 @@ def main():
                                 reply_text = match["reply_text"]
                                 print(
                                     f"Echo Chamber: MATCH FOUND (score={match['score']}) — source: \"{match['matched_source_text'][:60]}\" -> reply: \"{reply_text[:60]}\"")
-                                log_jarvis_interaction(
-                                    username, clean_prompt, "ECHO", reply_text)
                             else:
                                 reply_text = None
                                 print(
                                     f"Echo Chamber: NO MATCH FOUND for \"{clean_prompt[:60]}\" — reacting instead.")
-                                log_jarvis_interaction(
-                                    username, clean_prompt, "GHOSTED")
-
                                 try:
                                     no_reply_emojis = [
                                         "👀", "🤷", "🤔", "💀", "😶", "❓", "👍🏻", "👅"]
