@@ -424,6 +424,8 @@ def main():
     # ----------------------------------------
 
     bot_user_id = str(scraper.cl.user_id)
+    print(f"🤖 Logged in as user_id: {bot_user_id}")
+    IGNORED_IDS.add(bot_user_id)
 
     try:
         _, _, thread_id = scraper.get_group_chat_data(
