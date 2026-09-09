@@ -548,7 +548,7 @@ def main():
                             thread_id, "🔄 Pulling latest code from GitHub and restarting...")
                         try:
                             subprocess.run(["git", "pull"], check=True)
-                            os.execv(sys.executable, ['python3'] + sys.argv)
+                            os.execv(sys.executable, [sys.executable] + sys.argv)
                         except Exception as e:
                             scraper.send_message(
                                 thread_id, f"⚠️ Update failed: {e}")
