@@ -14,6 +14,7 @@ from core.scraper import InstagramScraper
 from core.analyzer import ChatAnalyzer
 from core.message_store import MessageStore
 from features.trivia import TriviaManager
+from features.milestones import get_milestone_rows, format_table_str
 from features.fun_commands import (
     extract_user_ids_from_command,
     format_vs,
@@ -105,6 +106,8 @@ def detect_command(text, sender_id, owner_user_id):
         if "all" in tokens:
             return "analytics_all"
         return "analytics"
+    if "milestones" in tokens:
+        return "milestones"
     if "vs" in tokens:
         return "vs"
     if "roast" in tokens:
@@ -201,6 +204,27 @@ def build_roast_text(full_messages, user_mapping, command_text, owner_user_id, t
         return f"⚠️ No logged messages for {name} yet."
 
     return format_roast(name, stats)
+
+
+def build_milestones_text(full_messages, user_mapping):
+    if not full_messages:
+        return "⚠️ No messages logged yet."
+
+    sorted_msgs = sorted(full_messages, key=lambda m: m.timestamp)
+    entries = [
+        {
+            "username": user_mapping.get(str(m.user_id), "Unknown"),
+            "text": m.text,
+            "timestamp": m.timestamp.isoformat(),
+        }
+        for m in sorted_msgs
+    ]
+
+    rows = get_milestone_rows(entries)
+    if not rows:
+        return "🏁 No milestone messages yet."
+
+    return "🏁 Milestone messages\n" + ("=" * 40) + "\n" + format_table_str(rows)
 
 
 def build_random_text(full_messages, user_mapping):
@@ -492,6 +516,9 @@ def main():
                         reply_text = build_analytics_text(
                             scoped_messages, user_mapping, TIMEOUT_MINUTES,
                             scope_label=scope_label)
+                    elif command_type == "milestones":
+                        reply_text = build_milestones_text(
+                            full_messages, user_mapping)
                     elif command_type == "vs":
                         reply_text = build_vs_text(
                             full_messages, user_mapping, command_msg.text)
