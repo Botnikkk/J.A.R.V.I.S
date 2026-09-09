@@ -13,7 +13,7 @@ from core.scraper import InstagramScraper
 from core.analyzer import ChatAnalyzer
 from core.message_store import MessageStore
 from features.trivia import TriviaManager
-from features.milestones import get_milestone_rows, format_table_str
+from features.milestones import get_milestone_rows, format_rows_for_chat
 from features.fun_commands import (
     extract_user_ids_from_command,
     format_vs,
@@ -223,7 +223,7 @@ def build_milestones_text(full_messages, user_mapping):
     if not rows:
         return "🏁 No milestone messages yet."
 
-    return "🏁 Milestone messages\n" + ("=" * 40) + "\n" + format_table_str(rows)
+    return format_rows_for_chat(rows, title="🏁 Milestone messages")
 
 
 def build_random_text(full_messages, user_mapping):

@@ -168,6 +168,35 @@ def print_table(rows):
         print(table)
 
 
+def format_rows_for_chat(rows, title=None):
+    """Stacked, mobile-friendly format for Instagram DMs.
+
+    Unlike format_table_str, this doesn't rely on column alignment (which
+    only works in a monospace font) — each row becomes its own short block,
+    so it stays readable regardless of the font Instagram renders with.
+    """
+    if not rows:
+        return ""
+
+    CHAT_MSG_WIDTH = 150  # generous since there's no column width to share
+
+    blocks = []
+    for idx, username, text, ts in rows:
+        flat_text = " ".join(text.split())
+        if len(flat_text) > CHAT_MSG_WIDTH:
+            flat_text = flat_text[:CHAT_MSG_WIDTH - 1] + "…"
+        if not flat_text:
+            flat_text = "(no text)"
+
+        block = f"📍 {idx}\n👤 {username}\n💬 {flat_text}\n🕒 {ts}"
+        blocks.append(block)
+
+    body = "\n\n".join(blocks)
+    if title:
+        return f"{title}\n\n{body}"
+    return body
+
+
 MILESTONE_NUMBERS = [1, 69, 100, 500, 1000, 6969]
 MILESTONE_STEP = 5000
 
